@@ -225,12 +225,20 @@ export class GitHub {
     branch: string,
     message: string,
     changes: { path: string; content: string }[],
+    destination: "new-branch" | "main" = "new-branch",
   ) {
     if (!this.token)
       throw new Error(
         "A GitHub token with repository Contents write permission is required.",
       );
-    if (!validBranch(branch) || branch === repo.branch)
+    if (destination === "main" && (repo.branch !== "main" || branch !== "main"))
+      throw new Error(
+        "Open the main branch before publishing directly to main.",
+      );
+    if (
+      destination === "new-branch" &&
+      (!validBranch(branch) || branch === repo.branch)
+    )
       throw new Error(
         "Choose a valid new branch, different from the source branch.",
       );
@@ -275,6 +283,13 @@ export class GitHub {
       tree: nextTree.sha,
       parents: [repo.head],
     });
+    if (destination === "main") {
+      await this.request(`${base}/git/refs/heads/main`, "PATCH", {
+        sha: commit.sha,
+        force: false,
+      });
+      return `https://github.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/commit/${commit.sha}`;
+    }
     await this.request(`${base}/git/refs`, "POST", {
       ref: `refs/heads/${branch}`,
       sha: commit.sha,

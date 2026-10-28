@@ -42,6 +42,92 @@ const repo = {
   tree: "tree",
   files: [{ path: "main.ts", sha: "old", mode: "100644" }],
 };
+test("direct main publishing uses a non-forced update, not a new branch", async () => {
+  const calls = [];
+  const client = new GitHub("test-only-token", async (url, options) => {
+    calls.push({ url, options });
+    return new Response(
+      JSON.stringify(
+        options.method === "GET" ? { object: { sha: "head" } } : { sha: "new" },
+      ),
+    );
+  });
+  const url = await client.publish(
+    repo,
+    "main",
+    "Update main",
+    [{ path: "main.ts", content: "updated" }],
+    "main",
+  );
+  assert.match(url, /\/commit\/new$/);
+  assert.deepEqual(
+    calls.map((call) => call.options.method),
+    ["GET", "POST", "POST", "POST", "PATCH"],
+  );
+  assert.ok(calls.at(-1).url.endsWith("/git/refs/heads/main"));
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body), {
+    sha: "new",
+    force: false,
+  });
+});
+
+test("main publishing rejects stale or non-main snapshots before any writes", async () => {
+  const calls = [];
+  const client = new GitHub("test-only-token", async (_, options) => {
+    calls.push(options.method);
+    return new Response(JSON.stringify({ object: { sha: "changed-head" } }));
+  });
+  const changes = [{ path: "main.ts", content: "updated" }];
+  await assert.rejects(
+    client.publish(
+      { ...repo, branch: "feature" },
+      "main",
+      "Update",
+      changes,
+      "main",
+    ),
+    /Open the main branch/,
+  );
+  assert.equal(calls.length, 0);
+  await assert.rejects(
+    client.publish(repo, "main", "Update", changes, "main"),
+    /Source branch changed/,
+  );
+  assert.deepEqual(calls, ["GET"]);
+});
+
+test("protected main or a concurrent ref update fails without force or retry", async () => {
+  for (const status of [403, 422]) {
+    const calls = [];
+    const client = new GitHub("test-only-token", async (url, options) => {
+      calls.push({ url, options });
+      return new Response(
+        JSON.stringify(
+          options.method === "GET"
+            ? { object: { sha: "head" } }
+            : { sha: "new" },
+        ),
+        { status: options.method === "PATCH" ? status : 200 },
+      );
+    });
+    await assert.rejects(
+      client.publish(
+        repo,
+        "main",
+        "Update",
+        [{ path: "main.ts", content: "updated" }],
+        "main",
+      ),
+      new RegExp(`GitHub ${status}`),
+    );
+    assert.equal(
+      calls.filter((call) => call.options.method === "PATCH").length,
+      1,
+    );
+    assert.equal(JSON.parse(calls.at(-1).options.body).force, false);
+  }
+});
+
 test("publishing creates one atomic new branch only after blobs, tree and commit", async () => {
   const calls = [];
   const client = new GitHub("test-only-token", async (url, options) => {

@@ -218,6 +218,9 @@ function App() {
   const [newPath, setNewPath] = useState("");
   const [newPathError, setNewPathError] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [publishDestination, setPublishDestination] = useState<
+    "new-branch" | "main"
+  >("new-branch");
   const [repoInput, setRepoInput] = useState("");
   const [branchInput, setBranchInput] = useState("");
   const [tokenInput, setTokenInput] = useState("");
@@ -550,6 +553,7 @@ function App() {
       const branch = command.branch || newBranchName();
       const message = command.message || "Apply reviewed changes";
       if (!token) {
+        setPublishDestination("new-branch");
         setPublishBranch(branch);
         setCommitMessage(message);
         setPublishing(true);
@@ -776,22 +780,53 @@ function App() {
   async function publishChanges(
     branch: string,
     message: string,
+    destination: "new-branch" | "main" = "new-branch",
   ): Promise<{ url?: string; error?: string }> {
     if (!repo) return { error: "No repository is connected." };
     setNetworkBusy(true);
     setError("");
+    const submitted = [...changes];
     try {
-      const url = await new GitHub(token).publish(
+      const client = new GitHub(token);
+      const url = await client.publish(
         repo,
         branch,
         message,
-        changes.map(([path, file]) => ({ path, content: file.content })),
+        submitted.map(([path, file]) => ({ path, content: file.content })),
+        destination,
       );
       setPublishedUrl(url);
       setPublishing(false);
-      setNotice(
-        `Published ${branch}. Local edits retained; reopen the new branch to continue.`,
-      );
+      if (destination === "main") {
+        try {
+          const refreshed = await client.open(
+            `${repo.owner}/${repo.name}`,
+            "main",
+          );
+          if (refreshed.head !== new URL(url).pathname.split("/").at(-1))
+            throw new Error("Main advanced again after your commit.");
+          setRepo(refreshed);
+          setFiles((previous) => {
+            const next = { ...previous };
+            for (const [path, file] of submitted)
+              next[path] = {
+                ...next[path],
+                original: file.content,
+                isNew: false,
+              };
+            return next;
+          });
+          setNotice("Published to main. Workspace is up to date.");
+        } catch {
+          setNotice(
+            "Published to main, but the workspace could not be refreshed. Download any remaining edits and reopen main before continuing.",
+          );
+        }
+      } else {
+        setNotice(
+          `Published ${branch}. Local edits retained; reopen the new branch to continue.`,
+        );
+      }
       return { url };
     } catch (failure) {
       const error = failureMessage(failure, "Publish failed.");
@@ -804,7 +839,11 @@ function App() {
 
   async function publish(event: FormEvent) {
     event.preventDefault();
-    await publishChanges(publishBranch, commitMessage);
+    await publishChanges(
+      publishDestination === "main" ? "main" : publishBranch,
+      commitMessage,
+      publishDestination,
+    );
   }
 
   const isCommand = request !== prefilled && parseCommand(request) !== null;
@@ -1080,6 +1119,7 @@ function App() {
                 className="text-button"
                 disabled={!repo || !changes.length || busy}
                 onClick={() => {
+                  setPublishDestination("new-branch");
                   setPublishBranch(
                     `work/local-edit-${Date.now().toString(36)}`,
                   );
@@ -1089,7 +1129,7 @@ function App() {
                 }}
               >
                 <GitBranch size={14} />
-                Publish branch
+                Publish
               </button>
             )}
           </div>
@@ -1187,7 +1227,10 @@ function App() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open pull request on GitHub <ChevronRight size={14} />
+                  {publishedUrl.includes("/commit/")
+                    ? "View commit on GitHub"
+                    : "Open pull request on GitHub"}{" "}
+                  <ChevronRight size={14} />
                 </a>
               )}
             </div>
@@ -1605,27 +1648,67 @@ function App() {
       )}
       {publishing && (
         <Dialog
-          title="Publish New Branch"
+          title="Publish Changes"
           close={() => {
             if (!networkBusy) setPublishing(false);
           }}
         >
           <form className="dialog-form" onSubmit={publish}>
+            <div
+              className="mode-switch"
+              role="group"
+              aria-label="Publish destination"
+            >
+              <button
+                type="button"
+                aria-pressed={publishDestination === "new-branch"}
+                className={
+                  publishDestination === "new-branch" ? "selected" : ""
+                }
+                disabled={networkBusy}
+                onClick={() => setPublishDestination("new-branch")}
+              >
+                <GitBranch size={14} />
+                New branch
+              </button>
+              <button
+                type="button"
+                aria-pressed={publishDestination === "main"}
+                className={publishDestination === "main" ? "selected" : ""}
+                disabled={networkBusy || repo?.branch !== "main"}
+                title={
+                  repo?.branch === "main"
+                    ? "Commit directly to main"
+                    : "Open the main branch first"
+                }
+                onClick={() => setPublishDestination("main")}
+              >
+                <Github size={14} />
+                Publish to main
+              </button>
+            </div>
             <div className="publish-summary">
               <GitBranch size={16} />
               <span>{repo?.branch}</span>
               <ChevronRight size={14} />
               <span>{changes.length} changed files</span>
             </div>
-            <label>
-              New branch
-              <input
-                required
-                value={publishBranch}
-                onChange={(event) => setPublishBranch(event.target.value)}
-                disabled={networkBusy}
-              />
-            </label>
+            {publishDestination === "new-branch" ? (
+              <label>
+                New branch
+                <input
+                  required
+                  value={publishBranch}
+                  onChange={(event) => setPublishBranch(event.target.value)}
+                  disabled={networkBusy}
+                />
+              </label>
+            ) : (
+              <p className="token-help">
+                Commits all listed files directly to main. Branch protection
+                rules still apply.
+              </p>
+            )}
             <label>
               Commit message
               <input
@@ -1676,7 +1759,9 @@ function App() {
                 ) : (
                   <GitBranch size={14} />
                 )}
-                Commit to new branch
+                {publishDestination === "main"
+                  ? "Publish to main"
+                  : "Commit to new branch"}
               </button>
             </footer>
           </form>
