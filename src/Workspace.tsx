@@ -11,6 +11,7 @@ import { unifiedMergeView } from "@codemirror/merge";
 import {
   ArrowDownToLine,
   ArrowUp,
+  BookOpen,
   Check,
   ChevronRight,
   Circle,
@@ -44,6 +45,16 @@ import {
 } from "./context";
 import type { Memory } from "./context";
 import { BrowserModel } from "./model";
+import { DEFAULT_MODEL_ID, MODEL_CHOICES, modelChoice } from "./models";
+import SkillStore from "./SkillStore";
+import { BUILTIN_SKILLS } from "./skillCatalog";
+import {
+  attachSkillContext,
+  mergeImportedSkills,
+  readSkillLibrary,
+} from "./skills";
+import type { Skill } from "./skills";
+import "./skills.css";
 import {
   GitHub,
   EmptyRepositoryError,
@@ -69,6 +80,7 @@ type TranscriptTurn = {
   response: string;
   file: string;
   status: string;
+  model?: string;
 };
 type Proposal = {
   path: string;
@@ -141,6 +153,23 @@ function failureMessage(failure: unknown, fallback: string) {
 
 const newBranchName = () => `work/assistant-${Date.now().toString(36)}`;
 
+const SKILL_STORAGE_KEY = "technicalskills.skill-library.v1";
+function restoreSkillLibrary() {
+  try {
+    return readSkillLibrary(
+      localStorage.getItem(SKILL_STORAGE_KEY),
+      BUILTIN_SKILLS,
+    );
+  } catch {
+    return {
+      imported: [],
+      attachedIds: [],
+      warning:
+        "Browser storage is unavailable. Skill imports cannot be saved on this browser.",
+    };
+  }
+}
+
 function TokenHelp() {
   return (
     <p className="token-help">
@@ -160,11 +189,13 @@ function Dialog({
   children,
   close,
   wide = false,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
   close: () => void;
   wide?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -173,7 +204,7 @@ function Dialog({
   return (
     <dialog
       ref={ref}
-      className={wide ? "dialog wide" : "dialog"}
+      className={`${wide ? "dialog wide" : "dialog"} ${className}`}
       onCancel={(event) => {
         event.preventDefault();
         close();
@@ -209,6 +240,10 @@ function App() {
   >("editor");
   const [phase, setPhase] = useState<Phase>("idle");
   const [ready, setReady] = useState(false);
+  const [selectedModelId, setSelectedModelId] =
+    useState<string>(DEFAULT_MODEL_ID);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillLibrary, setSkillLibrary] = useState(restoreSkillLibrary);
   const [progress, setProgress] = useState({ value: 0, text: "" });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -246,6 +281,12 @@ function App() {
   const nextId = useRef(1);
   const endOfChat = useRef<HTMLDivElement>(null);
   const busy = phase !== "idle" || networkBusy;
+  const selectedModel = modelChoice(selectedModelId);
+  const availableSkills = [...BUILTIN_SKILLS, ...skillLibrary.imported];
+  const attachedSkills = availableSkills.filter((skill) =>
+    skillLibrary.attachedIds.includes(skill.id),
+  );
+  const skillText = attachSkillContext(attachedSkills);
   const activeFile = files[active];
   const selectionSize = selectedRange.to - selectedRange.from;
   const changes = Object.entries(files).filter(([, file]) => isChanged(file));
@@ -295,6 +336,32 @@ function App() {
     memoryRef.current = value;
     setMemory(value);
   }
+
+  function saveSkillLibrary(imported: Skill[], attachedIds: string[]) {
+    attachSkillContext(
+      [...BUILTIN_SKILLS, ...imported].filter((skill) =>
+        attachedIds.includes(skill.id),
+      ),
+    );
+    try {
+      localStorage.setItem(
+        SKILL_STORAGE_KEY,
+        JSON.stringify({ imported, attachedIds }),
+      );
+    } catch {
+      throw new Error(
+        "Unable to save skills in browser storage. Nothing was changed; export your imports before clearing browser data.",
+      );
+    }
+    setSkillLibrary({ imported, attachedIds, warning: "" });
+  }
+
+  function toggleSkill(id: string) {
+    const attachedIds = skillLibrary.attachedIds.includes(id)
+      ? skillLibrary.attachedIds.filter((attached) => attached !== id)
+      : [...skillLibrary.attachedIds, id];
+    saveSkillLibrary(skillLibrary.imported, attachedIds);
+  }
   function pickPanel(next: "changes" | "memory") {
     setPanelOpen(panelOpen && panel === next ? false : true);
     setPanel(next);
@@ -326,8 +393,10 @@ function App() {
     const instance = new BrowserModel();
     model.current = instance;
     try {
-      await instance.load(abort.signal, (value, text) =>
-        setProgress({ value, text }),
+      await instance.load(
+        abort.signal,
+        (value, text) => setProgress({ value, text }),
+        selectedModelId,
       );
       setReady(true);
       setNotice("Model loaded. Inference stays in this browser.");
@@ -635,6 +704,7 @@ function App() {
         response: "",
         file: path,
         status: "Preparing context",
+        model: selectedModel.name,
       },
     ]);
     const updateTurn = (update: Partial<TranscriptTurn>) =>
@@ -645,7 +715,13 @@ function App() {
       );
     try {
       const prepared = await preparePrompt(
-        { instruction, pinned, request: task, fileContext: currentContext() },
+        {
+          instruction,
+          pinned,
+          request: task,
+          fileContext: currentContext(),
+          skills: skillText,
+        },
         memoryRef.current,
         instance.summarizer(abort.signal),
       );
@@ -849,7 +925,13 @@ function App() {
   const isCommand = request !== prefilled && parseCommand(request) !== null;
   const prospectiveBytes = promptBytes(
     assemblePrompt(
-      { instruction, pinned, fileContext: currentContext(), request },
+      {
+        instruction,
+        pinned,
+        fileContext: currentContext(),
+        request,
+        skills: skillText,
+      },
       emptyMemory(),
     ),
   );
@@ -857,7 +939,13 @@ function App() {
     download(
       "technicalskills-session.json",
       JSON.stringify(
-        { model: "Llama 3.2 1B", transcript, memory, pinned },
+        {
+          model: selectedModelId,
+          transcript,
+          memory,
+          pinned,
+          skills: attachedSkills,
+        },
         null,
         2,
       ),
@@ -878,6 +966,17 @@ function App() {
             {repo ? `${repo.owner} / ${repo.name}` : "Scratch workspace"}
           </span>
         </div>
+        <button
+          className="button skills-button"
+          onClick={() => setSkillsOpen(true)}
+          title="Browse skills library"
+        >
+          <BookOpen size={16} />
+          Skills
+          {attachedSkills.length > 0 && (
+            <span className="count">{attachedSkills.length}</span>
+          )}
+        </button>
         <button
           className="button connect-button"
           onClick={() => {
@@ -1267,9 +1366,7 @@ function App() {
             <Code2 size={17} />
           </div>
           <div>
-            <strong>
-              Llama 3.2 <span>1B</span>
-            </strong>
+            <strong>{selectedModel.name}</strong>
             <span className="model-status">
               <span className={`status-dot ${ready ? "online" : ""}`} />
               {phase === "loading"
@@ -1280,6 +1377,35 @@ function App() {
             </span>
           </div>
           {ready && <ShieldCheck size={17} className="model-shield" />}
+        </div>
+        <div className="model-picker">
+          <label htmlFor="browser-model">Browser model</label>
+          <select
+            id="browser-model"
+            value={selectedModelId}
+            disabled={busy}
+            onChange={(event) => {
+              model.current?.dispose();
+              model.current = null;
+              setReady(false);
+              setSelectedModelId(event.target.value);
+              setError("");
+              setProgress({ value: 0, text: "" });
+            }}
+          >
+            {MODEL_CHOICES.map((choice) => (
+              <option key={choice.id} value={choice.id}>
+                {choice.name}
+              </option>
+            ))}
+          </select>
+          <div className="model-specs">
+            <span>{selectedModel.purpose}</span>
+            <span>
+              Est. GPU {(selectedModel.memoryMB / 1024).toFixed(1)} GB
+              {selectedModel.half ? " / FP16" : " / FP32"}
+            </span>
+          </div>
         </div>
         {!ready && (
           <div className="load-controls">
@@ -1302,7 +1428,7 @@ function App() {
                 onClick={loadModel}
               >
                 <Download size={14} />
-                Load model <span className="button-note">~1 GB</span>
+                Load model <span className="button-note">ModelScope</span>
               </button>
             )}
           </div>
@@ -1328,7 +1454,7 @@ function App() {
               <p className="user-message">{turn.request}</p>
               <div className="chat-person assistant-person">
                 <Code2 size={13} />
-                {turn.status === "Done" ? "APP" : "LLAMA"}{" "}
+                {turn.status === "Done" ? "APP" : (turn.model ?? "MODEL")}{" "}
                 <span>{turn.status}</span>
               </div>
               <pre className="answer">
@@ -1381,6 +1507,36 @@ function App() {
               placeholder="Keep public APIs unchanged..."
             />
           </details>
+          {attachedSkills.length > 0 && (
+            <div className="attached-skills" aria-label="Attached skills">
+              {attachedSkills.map((skill) => (
+                <span className="attached-skill" key={skill.id}>
+                  <button
+                    title={`View ${skill.name}`}
+                    onClick={() => setSkillsOpen(true)}
+                  >
+                    <BookOpen size={12} />
+                    <span>{skill.name}</span>
+                  </button>
+                  <button
+                    className="icon-button"
+                    title={`Detach ${skill.name}`}
+                    aria-label={`Detach ${skill.name}`}
+                    disabled={busy}
+                    onClick={() => {
+                      try {
+                        toggleSkill(skill.id);
+                      } catch (failure) {
+                        setError(String(failure));
+                      }
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <form ref={formRef} onSubmit={send}>
             <div
               className="mode-switch"
@@ -1527,6 +1683,39 @@ function App() {
         <span className="window-status">4K context</span>
       </footer>
 
+      {skillsOpen && (
+        <Dialog
+          title="Skills Store"
+          wide
+          className="skills-dialog"
+          close={() => setSkillsOpen(false)}
+        >
+          <SkillStore
+            skills={availableSkills}
+            importedIds={skillLibrary.imported.map((skill) => skill.id)}
+            attachedIds={skillLibrary.attachedIds}
+            disabled={busy}
+            warning={skillLibrary.warning}
+            onToggle={toggleSkill}
+            onImport={(incoming) =>
+              saveSkillLibrary(
+                mergeImportedSkills(
+                  skillLibrary.imported,
+                  incoming,
+                  BUILTIN_SKILLS.map((skill) => skill.id),
+                ),
+                skillLibrary.attachedIds,
+              )
+            }
+            onRemove={(id) =>
+              saveSkillLibrary(
+                skillLibrary.imported.filter((skill) => skill.id !== id),
+                skillLibrary.attachedIds.filter((attached) => attached !== id),
+              )
+            }
+          />
+        </Dialog>
+      )}
       {creating && (
         <Dialog title="New File" close={() => setCreating(false)}>
           <form

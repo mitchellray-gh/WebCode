@@ -1,0 +1,56 @@
+[
+  {
+    "id": "small-commit",
+    "name": "Small Commit Preparation",
+    "description": "Prepare a scoped commit without reverting or absorbing unrelated work.",
+    "category": "Git & Delivery",
+    "tags": ["git", "commits", "diff"],
+    "version": "1.0.0",
+    "instructions": "Inspect status and the complete intended diff. Separate task changes from unrelated user edits without reverting either. Check for credentials, generated files, whitespace problems and accidental encoding changes. Run the required focused checks before staging explicit paths. Use the repository's configured identity and an accurate commit message. Commit or push only when authorized; never force-push by default."
+  },
+  {
+    "id": "pull-request-review",
+    "name": "Pull Request Review",
+    "description": "Prioritize actionable bugs, regressions and missing tests in a change set.",
+    "category": "Git & Delivery",
+    "tags": ["review", "pull-request", "correctness"],
+    "version": "1.0.0",
+    "instructions": "Read the changed behavior and its nearest callers or tests. Lead with concrete correctness and security findings ordered by severity. Give a location, triggering scenario and consequence for each finding. Avoid style preferences unless they create material risk. Separate verified defects from questions and assumptions. If no issues are found, say so and identify meaningful untested boundaries."
+  },
+  {
+    "id": "merge-conflicts",
+    "name": "Merge Conflict Resolution",
+    "description": "Resolve conflicting edits by preserving intent rather than choosing a side blindly.",
+    "category": "Git & Delivery",
+    "tags": ["git", "merge", "conflicts"],
+    "version": "1.0.0",
+    "instructions": "Read both sides and the common intent around the conflict. Identify independently valid changes and combine them where possible. Preserve user work and public contracts. Do not use blanket ours or theirs selection without an explicit decision. Remove conflict markers and run the narrow tests for the merged behavior. Explain any unresolved semantic choice before committing the resolution."
+  },
+  {
+    "id": "ci-workflow",
+    "name": "CI Workflow Design",
+    "description": "Build a small reproducible check pipeline with minimal permissions.",
+    "category": "Git & Delivery",
+    "tags": ["ci", "automation", "checks"],
+    "version": "1.0.0",
+    "instructions": "Reuse the repository's package manager, lockfile and tested runtime. Run checks in dependency order and preserve real failure exit codes. Grant minimal workflow permissions and keep secrets out of untrusted fork execution. Pin action versions according to project policy. Cache dependencies rather than generated source. Separate deployment authorization from ordinary validation and avoid adding hosting infrastructure unless requested."
+  },
+  {
+    "id": "safe-publishing",
+    "name": "Safe Branch Publishing",
+    "description": "Publish reviewed edits without overwriting newer remote work or hiding partial failure.",
+    "category": "Git & Delivery",
+    "tags": ["github", "publishing", "branches"],
+    "version": "1.0.0",
+    "instructions": "Show the destination, changed files and commit message before a write. Check the loaded remote head and refuse stale snapshots. Create a new branch by default; direct-main updates must be explicit and non-forced. Respect branch protection. Preserve local edits on failure and distinguish a successful remote commit from a failed local refresh. Verify the remote result instead of trusting progress text alone."
+  },
+  {
+    "id": "release-checklist",
+    "name": "Release Readiness",
+    "description": "Check user-facing risks and verification evidence before calling a release complete.",
+    "category": "Git & Delivery",
+    "tags": ["release", "verification", "delivery"],
+    "version": "1.0.0",
+    "instructions": "List the requested behavior, supported environment and known limits. Verify required tests and the production build. Check configuration, asset paths, migrations and rollback needs that actually apply. Confirm no secrets or unrequested infrastructure changes are included. Distinguish local success, mocked integration and live verification. Summarize unresolved blockers plainly; do not claim deployment merely because a commit was pushed."
+  }
+]

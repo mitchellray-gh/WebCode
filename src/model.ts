@@ -1,10 +1,9 @@
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { CONTEXT_WINDOW, OUTPUT_TOKENS } from "./context";
 import type { Message, Summarize } from "./context";
+import { DEFAULT_MODEL_ID, modelChoice, modelSource } from "./models";
 
-export const MODEL_ID = "Llama-3.2-1B-Instruct-q4f32_1-MLC";
-
-const MODEL_URL = `https://modelscope.cn/models/mlc-ai/${MODEL_ID}`;
+export const MODEL_ID = DEFAULT_MODEL_ID;
 
 export class BrowserModel {
   private worker?: Worker;
@@ -13,15 +12,26 @@ export class BrowserModel {
   async load(
     signal: AbortSignal,
     progress: (fraction: number, text: string) => void,
+    modelId: string = DEFAULT_MODEL_ID,
   ) {
+    const choice = modelChoice(modelId);
     const gpu = (
       navigator as Navigator & {
-        gpu?: { requestAdapter: () => Promise<unknown> };
+        gpu?: {
+          requestAdapter: () => Promise<{
+            features: { has: (feature: string) => boolean };
+          } | null>;
+        };
       }
     ).gpu;
-    if (!gpu || !(await gpu.requestAdapter()))
+    const adapter = gpu ? await gpu.requestAdapter() : null;
+    if (!adapter)
       throw new Error(
         "No WebGPU adapter available. Try current desktop Chrome or Edge with hardware acceleration enabled.",
+      );
+    if (choice.half && !adapter.features.has("shader-f16"))
+      throw new Error(
+        "This model needs shader-f16 support. Choose an FP32 model on this GPU.",
       );
     signal.throwIfAborted();
     progress(0, "Connecting to ModelScope...");
@@ -31,9 +41,9 @@ export class BrowserModel {
     signal.throwIfAborted();
     const appConfig = {
       ...prebuiltAppConfig,
-      model_list: prebuiltAppConfig.model_list.map((record) =>
-        record.model_id === MODEL_ID ? { ...record, model: MODEL_URL } : record,
-      ),
+      model_list: prebuiltAppConfig.model_list
+        .filter((record) => record.model_id === modelId)
+        .map((record) => ({ ...record, model: modelSource(modelId) })),
     };
     this.worker = new Worker(new URL("./model.worker.ts", import.meta.url), {
       type: "module",
@@ -56,7 +66,7 @@ export class BrowserModel {
     });
     try {
       await Promise.race([
-        this.engine.reload(MODEL_ID, { context_window_size: CONTEXT_WINDOW }),
+        this.engine.reload(modelId, { context_window_size: CONTEXT_WINDOW }),
         interrupted,
       ]);
       signal.throwIfAborted();

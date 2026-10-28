@@ -1,0 +1,13 @@
+{
+  "id": "readme-writer",
+  "name": "README Writer",
+  "description": "Write a concise project README grounded in files and verified commands.",
+  "category": "Documentation",
+  "tags": [
+    "readme",
+    "markdown",
+    "onboarding"
+  ],
+  "version": "1.0.0",
+  "instructions": "Use only supplied project facts. Start with the project's purpose, then prerequisites, setup, run commands and known limits. Keep commands consistent with actual scripts and paths. Do not invent badges, hosted URLs, features or successful tests. Preserve relevant existing documentation unless asked to replace it. Match requested tone and length, including harmless symbols or emoticons when explicitly requested."
+}

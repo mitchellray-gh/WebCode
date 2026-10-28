@@ -1,0 +1,56 @@
+[
+  {
+    "id": "typescript-contracts",
+    "name": "TypeScript Contracts",
+    "description": "Strengthen types at real module and input boundaries without broad rewrites.",
+    "category": "Languages",
+    "tags": ["typescript", "types", "contracts"],
+    "version": "1.0.0",
+    "instructions": "Infer the contract from callers and runtime behavior. Represent valid states with discriminated unions where they remove ambiguity. Validate unknown input before narrowing it. Avoid any, unchecked assertions and non-null assertions that hide missing cases. Preserve public signatures unless the request requires change. Check exhaustive branches and compiler output. Do not confuse a successful typecheck with runtime validation."
+  },
+  {
+    "id": "javascript-async",
+    "name": "JavaScript Async Flows",
+    "description": "Make asynchronous work cancellable, ordered and explicit about failure.",
+    "category": "Languages",
+    "tags": ["javascript", "async", "cancellation"],
+    "version": "1.0.0",
+    "instructions": "Trace which operations depend on earlier results and which can run independently. Propagate AbortSignal and distinguish cancellation from failure. Prevent stale responses from replacing newer state. Use try/finally for cleanup and avoid unhandled promises. Keep partial-write errors honest. Test cancellation, timeout, retry and rapid repeated calls. Never add automatic retries to writes without checking idempotency."
+  },
+  {
+    "id": "python-functions",
+    "name": "Python Function Design",
+    "description": "Write small Python functions using standard-library tools and clear boundaries.",
+    "category": "Languages",
+    "tags": ["python", "stdlib", "functions"],
+    "version": "1.0.0",
+    "instructions": "Read the project's Python version, neighboring functions and tests. Prefer standard-library types and utilities before dependencies. Separate pure computation from filesystem or network work. Validate boundary inputs, preserve useful exception context and avoid catching Exception without recovery. Add annotations grounded in actual values and callers. Include a focused runnable check, and state clearly when Python execution was unavailable."
+  },
+  {
+    "id": "sql-queries",
+    "name": "SQL Query Craft",
+    "description": "Build accurate joins and aggregations while making row grain explicit.",
+    "category": "Languages",
+    "tags": ["sql", "joins", "aggregation"],
+    "version": "1.0.0",
+    "instructions": "Identify the SQL dialect and intended row grain. Verify join keys and cardinality before aggregating. Handle NULLs and duplicate records explicitly. Parameterize external values rather than interpolating them. Explain filters that change outer-join behavior. Use a small example with empty and duplicate inputs to check totals. Do not execute writes or invent schema columns that were not supplied."
+  },
+  {
+    "id": "semantic-html",
+    "name": "Semantic HTML",
+    "description": "Use native document and control semantics instead of custom interaction scaffolding.",
+    "category": "Languages",
+    "tags": ["html", "semantics", "accessibility"],
+    "version": "1.0.0",
+    "instructions": "Choose elements by meaning: buttons for actions, links for navigation, headings for structure and lists for repeated items. Keep heading order coherent and controls labeled. Prefer native dialog and form behavior when supported by the project. Provide alternate text for meaningful images and hide decorative icons. Avoid nested interactive elements. Check keyboard operation and meaningful reading order."
+  },
+  {
+    "id": "regex-review",
+    "name": "Regex Review",
+    "description": "Check parsing expressions against boundaries, Unicode and hostile inputs.",
+    "category": "Languages",
+    "tags": ["regex", "parsing", "validation"],
+    "version": "1.0.0",
+    "instructions": "Clarify whether matching is whole-input validation or substring extraction. Anchor only where intended and test punctuation, whitespace, empty strings and Unicode. Avoid nested ambiguous repetitions that can cause catastrophic backtracking. Prefer a structured parser for JSON, YAML, URLs and source languages. Keep a compact table of matching and nonmatching examples. Do not treat a regex match as authorization."
+  }
+]

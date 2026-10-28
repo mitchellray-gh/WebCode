@@ -1,0 +1,56 @@
+[
+  {
+    "id": "untrusted-input",
+    "name": "Untrusted Input Review",
+    "description": "Check size limits, parser boundaries and unsafe assumptions before side effects.",
+    "category": "Security",
+    "tags": ["security", "input", "parsing"],
+    "version": "1.0.0",
+    "instructions": "Identify external data, its parser and the side effects it can influence. Require type, size and range validation before use. Reject prototype-sensitive keys and ambiguous structures where relevant. Treat imported files and model output as untrusted. Do not turn model text into executable code or permissions automatically. Check invalid encodings, oversized payloads and malformed nested input with focused tests."
+  },
+  {
+    "id": "auth-boundaries",
+    "name": "Authentication Boundaries",
+    "description": "Separate identity, permissions and resource ownership throughout an API flow.",
+    "category": "Security",
+    "tags": ["auth", "permissions", "sessions"],
+    "version": "1.0.0",
+    "instructions": "Trace identity verification, authorization and resource ownership separately. Request the minimum provider permissions needed. Never ship client secrets in browser bundles. Validate callback state and use secure session storage when a backend exists. Do not confuse CORS with authorization. Test missing credentials, insufficient scope and cross-user resource access using fake identities or an authorized sandbox."
+  },
+  {
+    "id": "secret-handling",
+    "name": "Secret Handling",
+    "description": "Keep tokens out of prompts, logs, URLs, source files and exported sessions.",
+    "category": "Security",
+    "tags": ["secrets", "tokens", "privacy"],
+    "version": "1.0.0",
+    "instructions": "Map where secrets enter, travel, persist and leave. Keep them out of model context, query strings, telemetry and session exports. Prefer short-lived least-privilege credentials and explicit revocation. Never ask a user to paste a secret into chat. Redact examples and tests. If exposure occurred, recommend rotation rather than merely deleting the visible copy, and avoid reproducing the value."
+  },
+  {
+    "id": "dependency-review",
+    "name": "Dependency Risk Review",
+    "description": "Evaluate whether a package is necessary and what adding or updating it changes.",
+    "category": "Security",
+    "tags": ["dependencies", "supply-chain", "audit"],
+    "version": "1.0.0",
+    "instructions": "Check whether standard platform features or installed packages already solve the task. For a necessary dependency, inspect its purpose, version support, transitive size and known audit findings. Prefer maintained packages and lockfile-based installs. Do not run forceful audit upgrades without reviewing compatibility. Distinguish advisory presence from actual exposure and verify the affected build or test path."
+  },
+  {
+    "id": "xss-rendering",
+    "name": "Safe Content Rendering",
+    "description": "Render imported Markdown, model replies and user text without executing HTML.",
+    "category": "Security",
+    "tags": ["xss", "markdown", "frontend"],
+    "version": "1.0.0",
+    "instructions": "Render untrusted content as text unless rich rendering is required. If HTML is needed, use a maintained sanitizer and an explicit allowlist. Restrict link protocols and protect external-window navigation. Do not pass imported instructions to innerHTML or execute embedded scripts. Test HTML tags, javascript links and malformed markup. Keep authentication data outside rendered documents and model output."
+  },
+  {
+    "id": "safe-file-paths",
+    "name": "Safe File Paths",
+    "description": "Validate file creation and publishing paths without traversal or collisions.",
+    "category": "Security",
+    "tags": ["files", "paths", "validation"],
+    "version": "1.0.0",
+    "instructions": "Require a relative path with explicit length and character limits. Reject traversal segments, reserved metadata directories, absolute paths and unexpected separators. Detect collisions with both files and parent directories. Validate again at the publishing boundary, not only in the dialog. Preserve case behavior deliberately. Test empty paths, duplicates, Unicode, nested files and attempts to write through an existing file."
+  }
+]

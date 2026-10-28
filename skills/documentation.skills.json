@@ -1,0 +1,56 @@
+[
+  {
+    "id": "readme-writer",
+    "name": "README Writer",
+    "description": "Write a concise project README grounded in files and verified commands.",
+    "category": "Documentation",
+    "tags": ["readme", "markdown", "onboarding"],
+    "version": "1.0.0",
+    "instructions": "Use only supplied project facts. Start with the project's purpose, then prerequisites, setup, run commands and known limits. Keep commands consistent with actual scripts and paths. Do not invent badges, hosted URLs, features or successful tests. Preserve relevant existing documentation unless asked to replace it. Match requested tone and length, including harmless symbols or emoticons when explicitly requested."
+  },
+  {
+    "id": "api-documentation",
+    "name": "API Documentation",
+    "description": "Describe endpoints with accurate request, response and error examples.",
+    "category": "Documentation",
+    "tags": ["api", "documentation", "examples"],
+    "version": "1.0.0",
+    "instructions": "Read endpoint definitions and schemas before writing. Document authentication, method, path, required fields and meaningful limits. Include one valid request and response plus the important error cases using synthetic values. Distinguish optional from nullable fields. Never include a real token. Label unverified behavior and avoid promising compatibility not demonstrated by the implementation."
+  },
+  {
+    "id": "code-explanation",
+    "name": "Code Explanation",
+    "description": "Explain supplied code clearly without claiming execution or repository access.",
+    "category": "Documentation",
+    "tags": ["explanation", "learning", "code"],
+    "version": "1.0.0",
+    "instructions": "Answer the specific question from the supplied source, not historical guesses. Describe inputs, control flow, output and important edge cases in plain language. Quote a short relevant expression when it helps. Separate what the code does from what it should do. Never claim to run commands, read unseen files or access a repository. Ask for the missing function or caller when the answer depends on it."
+  },
+  {
+    "id": "docstrings",
+    "name": "Useful Docstrings",
+    "description": "Document contracts, units and surprises without narrating obvious implementation.",
+    "category": "Documentation",
+    "tags": ["docstrings", "comments", "contracts"],
+    "version": "1.0.0",
+    "instructions": "Follow the language and repository's docstring style. Document behavior callers cannot infer from names and types: units, side effects, ownership, errors and unusual edge cases. Keep examples executable when practical. Avoid comments that merely repeat the next statement. Update stale contract text alongside behavior changes. Do not invent guarantees, thread safety or complexity claims without checking the implementation."
+  },
+  {
+    "id": "changelog",
+    "name": "Changelog Draft",
+    "description": "Summarize meaningful changes without turning implementation details into release claims.",
+    "category": "Documentation",
+    "tags": ["changelog", "release-notes", "writing"],
+    "version": "1.0.0",
+    "instructions": "Use the supplied diff or commit list as evidence. Group meaningful user-facing additions, fixes and breaking changes. Describe observable outcomes rather than every refactor. Identify migration requirements and known limitations. Never claim a fix was deployed or tested unless that evidence is supplied. Keep version numbers and dates consistent with the project's release process."
+  },
+  {
+    "id": "troubleshooting",
+    "name": "Troubleshooting Guide",
+    "description": "Turn verified failure modes into short diagnostic and recovery steps.",
+    "category": "Documentation",
+    "tags": ["troubleshooting", "errors", "support"],
+    "version": "1.0.0",
+    "instructions": "Start with the exact symptom and the environment where it occurs. Separate confirmed causes from hypotheses. Give the cheapest safe discriminating check, expected output and next recovery action. Preserve user data and avoid destructive resets or privilege changes as generic advice. Show no secrets. Clearly state when a provider, network policy or unsupported device is the unresolved blocker."
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "unit-tests",
+    "name": "Focused Unit Tests",
+    "description": "Cover the changed behavior with small deterministic tests using existing helpers.",
+    "category": "Testing",
+    "tags": ["tests", "unit", "regression"],
+    "version": "1.0.0",
+    "instructions": "Find the nearest existing tests and reuse their framework and helpers. Write a regression that fails for the original defect before adjusting implementation when practical. Assert observable behavior rather than internal call details unless ordering is the contract. Cover the important boundary case without building a new test harness. Keep randomness seeded and clocks explicit. Report the exact checks run and any that could not run."
+  },
+  {
+    "id": "integration-tests",
+    "name": "Integration Checkpoints",
+    "description": "Exercise module contracts and failure paths without touching real production data.",
+    "category": "Testing",
+    "tags": ["integration", "contracts", "mocks"],
+    "version": "1.0.0",
+    "instructions": "Identify the contract where modules meet and use realistic request and response shapes. Stub external writes unless a real test environment is explicitly authorized. Verify serialization, errors, ordering and cleanup across the boundary. Keep credentials fake and never log secrets. Mark which parts are mocked. Do not present a mocked integration check as proof that a live provider accepted a request."
+  },
+  {
+    "id": "bug-reproduction",
+    "name": "Minimal Bug Reproduction",
+    "description": "Turn a vague failure into one falsifiable hypothesis and a focused regression.",
+    "category": "Testing",
+    "tags": ["debugging", "reproduction", "bugs"],
+    "version": "1.0.0",
+    "instructions": "Start from the reported input, failing command or visible symptom. Trace the smallest controlling code path and state a falsifiable local hypothesis. Choose one cheap check that distinguishes it from the nearest alternative. Make a minimal reversible fix and rerun that check before exploring elsewhere. Preserve existing work and avoid unrelated cleanup. Report evidence separately from assumptions."
+  },
+  {
+    "id": "browser-checks",
+    "name": "Browser Workflow Checks",
+    "description": "Check real UI flows, responsive sizing, keyboard access and browser-only failures.",
+    "category": "Testing",
+    "tags": ["browser", "playwright", "responsive"],
+    "version": "1.0.0",
+    "instructions": "Exercise the actual interaction path with accessible selectors. Capture page errors and failed requests. Check desktop and narrow mobile widths, long labels and root overflow. Verify keyboard focus and that controls remain reachable. Stub destructive API calls explicitly. Distinguish browser execution from unit mocks and do not claim a screenshot proves behavior. Report physical-device testing as unavailable unless it actually ran."
+  },
+  {
+    "id": "test-fixtures",
+    "name": "Small Test Fixtures",
+    "description": "Create realistic edge cases without duplicating production data or leaking secrets.",
+    "category": "Testing",
+    "tags": ["fixtures", "data", "determinism"],
+    "version": "1.0.0",
+    "instructions": "Use the smallest fixture that represents the contract. Include meaningful empty, duplicate, malformed and Unicode cases where relevant. Keep test credentials synthetic and strip personal or production data. Prefer existing fixture builders over another abstraction. Make expected outcomes visible beside the inputs. Ensure fixture setup does not hide the behavior under test or silently depend on wall-clock time."
+  },
+  {
+    "id": "test-review",
+    "name": "Test Coverage Review",
+    "description": "Find missing regressions and assertions that pass without checking real behavior.",
+    "category": "Testing",
+    "tags": ["review", "coverage", "assertions"],
+    "version": "1.0.0",
+    "instructions": "Read the touched behavior and ask which plausible defect would still pass each test. Identify tautological assertions, overbroad mocks and missing rejection paths. Prioritize user-visible contracts and shared boundaries over line coverage. Suggest a minimal test for each material gap. Do not request a new framework without need. State residual risks when live APIs, GPUs or devices are not represented."
+  }
+]

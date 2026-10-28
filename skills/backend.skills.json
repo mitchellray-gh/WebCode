@@ -1,0 +1,56 @@
+[
+  {
+    "id": "rest-api",
+    "name": "REST Endpoint Design",
+    "description": "Design narrow endpoints with explicit requests, responses and failure behavior.",
+    "category": "Backend",
+    "tags": ["api", "rest", "http"],
+    "version": "1.0.0",
+    "instructions": "Follow existing endpoint conventions and authentication boundaries. Define input and response shapes, status codes and resource ownership before implementation. Validate all external values and avoid returning internal errors or secrets. Distinguish invalid input, missing resources and upstream failure. Preserve compatibility where possible. Test a valid request and the most important rejection path without sending real destructive requests."
+  },
+  {
+    "id": "fastapi-endpoints",
+    "name": "FastAPI Endpoints",
+    "description": "Build validated Python API endpoints that respect async and dependency conventions.",
+    "category": "Backend",
+    "tags": ["python", "fastapi", "pydantic"],
+    "version": "1.0.0",
+    "instructions": "Inspect existing routers, dependency injection and Pydantic versions. Reuse models and authentication dependencies. Do not block the event loop with synchronous network or heavy CPU work. Bound request sizes and pagination. Return deliberate HTTP errors and avoid leaking tracebacks. Test request validation and authorization. Keep CORS origins explicit; broad CORS does not substitute for authentication."
+  },
+  {
+    "id": "node-services",
+    "name": "Node Service Boundaries",
+    "description": "Keep Node handlers small, observable and safe around external resources.",
+    "category": "Backend",
+    "tags": ["node", "http", "services"],
+    "version": "1.0.0",
+    "instructions": "Reuse the service's routing, logging and error conventions. Separate request parsing, authorization and business behavior. Use explicit timeouts for upstream calls and clean up streams and connections. Keep secrets server-side. Handle malformed bodies and disconnected clients. Avoid logging request bodies by default. Verify a successful response and a representative upstream failure without widening the API surface."
+  },
+  {
+    "id": "boundary-validation",
+    "name": "Boundary Validation",
+    "description": "Validate untrusted values once at the owning boundary and preserve useful errors.",
+    "category": "Backend",
+    "tags": ["validation", "schemas", "input"],
+    "version": "1.0.0",
+    "instructions": "List external entry points and the values they accept. Use the existing schema library or parser and reject invalid types, sizes and ranges before side effects. Keep normalization separate from authorization. Reject ambiguous duplicates instead of silently choosing one. Return actionable field-level errors without sensitive values. Test malformed, oversized and boundary inputs along with one valid case."
+  },
+  {
+    "id": "error-handling",
+    "name": "Honest Error Handling",
+    "description": "Make failures actionable without claiming that partial writes never happened.",
+    "category": "Backend",
+    "tags": ["errors", "recovery", "reliability"],
+    "version": "1.0.0",
+    "instructions": "Locate where failure is recoverable and handle it there. Preserve the original cause and distinguish cancellation, validation, permissions, conflict and upstream outage. Never say nothing changed if earlier writes may have succeeded. Keep local work on failure. Retry only operations proven safe to repeat. Test the failure before and after the first side effect, and show clear recovery steps."
+  },
+  {
+    "id": "api-pagination",
+    "name": "API Pagination",
+    "description": "Page external results without missing records, duplicating them or exhausting limits.",
+    "category": "Backend",
+    "tags": ["api", "pagination", "rate-limits"],
+    "version": "1.0.0",
+    "instructions": "Use the API's documented cursor or link mechanism. Keep ordering stable and enforce a bounded page size and maximum work. Respect rate-limit and retry-after metadata. Track continuation explicitly and detect repeated cursors. Do not claim a complete listing if an API truncates it. Check empty, single-page and multi-page results plus a failure midway through retrieval."
+  }
+]

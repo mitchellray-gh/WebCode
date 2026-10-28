@@ -1,0 +1,56 @@
+[
+  {
+    "id": "react-components",
+    "name": "React Component Builder",
+    "description": "Build focused React components that fit the existing UI and data flow.",
+    "category": "Frontend",
+    "tags": ["react", "components", "ui"],
+    "version": "1.0.0",
+    "instructions": "Read nearby components and reuse their props, styling and state conventions. Build the smallest component that serves the request. Handle loading, empty and error states. Use semantic elements and accessible labels. Avoid speculative abstractions and unnecessary memoization. Verify the changed interaction and typecheck when a runner is available; otherwise state what remains untested."
+  },
+  {
+    "id": "react-state",
+    "name": "React State Repair",
+    "description": "Find stale state, redundant effects and ownership problems in React.",
+    "category": "Frontend",
+    "tags": ["react", "state", "effects"],
+    "version": "1.0.0",
+    "instructions": "Trace the event, state owner and rendered value before editing. Derive values during render rather than synchronizing duplicate state with effects. Use functional updates for changes based on previous state. Keep effects for external synchronization with cleanup. Check rapid input, cancellation and repeated actions. Do not claim a race is fixed without evidence from the relevant flow."
+  },
+  {
+    "id": "responsive-layout",
+    "name": "Responsive Layout",
+    "description": "Adapt working interfaces across narrow phones, tablets and desktop screens.",
+    "category": "Frontend",
+    "tags": ["css", "mobile", "layout"],
+    "version": "1.0.0",
+    "instructions": "Preserve the product's visual language. Choose layout breakpoints from content fit, not device names. Use minmax tracks, min-width:0 and bounded scrolling. Keep primary controls reachable with touch targets of at least 44 pixels where practical. Respect safe areas and keyboard space. Check narrow widths, long labels and no root-level horizontal overflow. State when physical-device testing was not run."
+  },
+  {
+    "id": "css-debugging",
+    "name": "CSS Layout Debugger",
+    "description": "Repair overflow, stacking and alignment without accumulating override rules.",
+    "category": "Frontend",
+    "tags": ["css", "overflow", "grid"],
+    "version": "1.0.0",
+    "instructions": "Identify the owning layout and inspect its sizing constraints before changing child margins. Check flex shrink, intrinsic widths, grid tracks, overflow and stacking contexts. Fix the smallest controlling rule; avoid arbitrary negative offsets and blanket !important overrides. Preserve unrelated selectors. Verify long content, empty content and neighboring breakpoints, and distinguish page overflow from intentional editor scrolling."
+  },
+  {
+    "id": "accessible-forms",
+    "name": "Accessible Forms",
+    "description": "Create labeled forms with useful validation, keyboard flow and error states.",
+    "category": "Frontend",
+    "tags": ["accessibility", "forms", "validation"],
+    "version": "1.0.0",
+    "instructions": "Use native form controls with persistent labels and appropriate input types. Connect validation errors to their fields and preserve user input on failure. Prevent duplicate submissions while requests run. Keep keyboard navigation and visible focus intact. Do not rely on color alone for errors. Mark required inputs and announce submission status. Never expose passwords or tokens in logs, URLs or model context."
+  },
+  {
+    "id": "frontend-performance",
+    "name": "Frontend Performance",
+    "description": "Reduce measurable rendering and loading costs without premature optimization.",
+    "category": "Frontend",
+    "tags": ["performance", "bundles", "react"],
+    "version": "1.0.0",
+    "instructions": "Locate the measured slow interaction or large initial asset first. Defer expensive optional code and media until needed. Avoid rebuilding large derived lists on every keystroke when profiling shows a problem. Prefer simple state boundaries before memoization. Keep loading and cancellation usable. Compare before and after measurements using the same scenario; if no profiler is available, label performance claims as hypotheses."
+  }
+]

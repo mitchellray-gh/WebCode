@@ -1,0 +1,56 @@
+[
+  {
+    "id": "csv-import",
+    "name": "CSV Import",
+    "description": "Parse tabular uploads with explicit headers, encodings and row-level validation.",
+    "category": "Data",
+    "tags": ["csv", "imports", "validation"],
+    "version": "1.0.0",
+    "instructions": "Use an established CSV parser rather than splitting on commas. Define accepted headers, encoding and file-size limits. Preserve quoted separators and line breaks. Validate required columns and report row-level problems without discarding valid data silently. Keep identifiers as strings where leading zeros matter. Check empty files, duplicate headers, malformed quoting and spreadsheet-formula risks when exporting."
+  },
+  {
+    "id": "json-contracts",
+    "name": "JSON Contracts",
+    "description": "Validate portable JSON data formats and evolve them without silent data loss.",
+    "category": "Data",
+    "tags": ["json", "schemas", "compatibility"],
+    "version": "1.0.0",
+    "instructions": "Parse JSON with the platform parser and validate shape, types and size at the boundary. Define which unknown fields are ignored or rejected. Use explicit IDs and versions for portable records. Detect duplicate identities before merging. Preserve original data on failed imports. Check round-trip serialization, missing fields, Unicode and incompatible versions. Never evaluate JSON as code."
+  },
+  {
+    "id": "database-schema",
+    "name": "Database Schema Design",
+    "description": "Choose keys, constraints and relationships from the actual data lifecycle.",
+    "category": "Data",
+    "tags": ["database", "schema", "constraints"],
+    "version": "1.0.0",
+    "instructions": "Identify entities, ownership and row lifecycle before choosing tables. Define stable primary keys and enforce real uniqueness and foreign-key rules in the database. Make NULL semantics explicit. Add indexes for observed access patterns rather than every column. Consider deletion and retention policies. Explain assumptions and propose reversible migrations; do not execute schema changes without authorization."
+  },
+  {
+    "id": "data-migration",
+    "name": "Reversible Data Migration",
+    "description": "Plan bounded migrations with validation, recovery and no unapproved production writes.",
+    "category": "Data",
+    "tags": ["migration", "database", "rollback"],
+    "version": "1.0.0",
+    "instructions": "Read the current schema and migration conventions. State preconditions, expected row counts and invariant checks. Separate expanding compatible schema from backfill and destructive cleanup. Make batches resumable where practical and identify a rollback or recovery path. Test on representative synthetic data first. Never run production writes or irreversible cleanup based only on model-generated assumptions."
+  },
+  {
+    "id": "data-cleaning",
+    "name": "Explicit Data Cleaning",
+    "description": "Normalize messy data while preserving provenance and reporting rejected records.",
+    "category": "Data",
+    "tags": ["cleanup", "normalization", "quality"],
+    "version": "1.0.0",
+    "instructions": "Define the expected grain and valid values before cleaning. Keep the original data or a reproducible transformation record. Distinguish missing, zero, invalid and unknown values. Normalize dates and units explicitly. Deduplicate using documented keys, not arbitrary row order. Report counts for accepted, changed and rejected records, and check that transformations do not silently change totals or identifiers."
+  },
+  {
+    "id": "data-aggregation",
+    "name": "Aggregation Checks",
+    "description": "Make totals, rates and grouped metrics agree with their underlying records.",
+    "category": "Data",
+    "tags": ["metrics", "aggregation", "reconciliation"],
+    "version": "1.0.0",
+    "instructions": "State the unit, grain, numerator and denominator for every metric. Check joins and filters for duplicate or missing records. Keep decimal and currency rounding at deliberate boundaries. Define empty-group and zero-denominator behavior. Reconcile grouped totals to source totals using a small example. Do not average ratios blindly or infer causation from a summary statistic."
+  }
+]
