@@ -8,14 +8,6 @@ export const MODEL_CHOICES = [
     half: false,
   },
   {
-    id: "Llama-3.2-3B-Instruct-q4f32_1-MLC",
-    name: "Llama 3.2 3B",
-    family: "Llama",
-    memoryMB: 2952,
-    purpose: "General assistance",
-    half: false,
-  },
-  {
     id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
     name: "Llama 3.2 1B / FP16",
     family: "Llama",
@@ -45,22 +37,6 @@ export const MODEL_CHOICES = [
     family: "Qwen",
     memoryMB: 1889,
     purpose: "Code generation",
-    half: false,
-  },
-  {
-    id: "Qwen2.5-Coder-3B-Instruct-q4f32_1-MLC",
-    name: "Qwen2.5-Coder 3B",
-    family: "Qwen",
-    memoryMB: 2894,
-    purpose: "Code generation",
-    half: false,
-  },
-  {
-    id: "Qwen2.5-Coder-7B-Instruct-q4f32_1-MLC",
-    name: "Qwen2.5-Coder 7B",
-    family: "Qwen",
-    memoryMB: 5901,
-    purpose: "Larger desktop GPUs",
     half: false,
   },
   {
