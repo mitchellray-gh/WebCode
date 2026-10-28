@@ -1,9 +1,10 @@
-﻿import { test } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   EmptyRepositoryError,
   GitHub,
   parseRepository,
+  validateNewPath,
   validBranch,
 } from "../src/github.ts";
 
@@ -191,4 +192,75 @@ test("initialize refuses without a token before any network call", async () => {
   });
   await assert.rejects(client.initialize("owner/empty"), /token/);
   assert.equal(calls, 0);
+});
+
+test("new file paths reject traversal, .git, collisions and odd characters", () => {
+  const existing = ["README.md", "src/app.ts", "src/lib/util.ts"];
+  assert.equal(validateNewPath("src/new.ts", existing), "");
+  assert.equal(validateNewPath("docs/guide/intro.md", existing), "");
+  assert.equal(validateNewPath(".gitignore", existing), "");
+  for (const bad of [
+    "",
+    "/abs.ts",
+    "dir/",
+    "../x.ts",
+    "a/../b.ts",
+    "./x.ts",
+    "a//b.ts",
+    ".git/config",
+    "src/.GIT/x",
+    "a\\b.ts",
+    "C:/x.ts",
+    "bad\u0001name",
+    " lead.ts",
+    "dir /x.ts",
+    "x".repeat(201),
+  ])
+    assert.notEqual(validateNewPath(bad, existing), "", JSON.stringify(bad));
+  assert.match(validateNewPath("README.md", existing), /already exists/);
+  assert.match(validateNewPath("src", existing), /already a folder/);
+  assert.match(validateNewPath("README.md/x.ts", existing), /parent/);
+  assert.match(validateNewPath("src/app.ts/x", existing), /parent/);
+});
+
+test("publishing can add a new file with a regular-file mode alongside an edit", async () => {
+  const bodies = [];
+  const client = new GitHub("test-only-token", async (url, options) => {
+    if (options.body) bodies.push({ url, body: JSON.parse(options.body) });
+    return new Response(
+      JSON.stringify(
+        options.method === "GET" ? { object: { sha: "head" } } : { sha: "new" },
+      ),
+    );
+  });
+  await client.publish(repo, "work/new-file", "Add file", [
+    { path: "main.ts", content: "edited" },
+    { path: "src/brand-new.ts", content: "export const x = 1\n" },
+  ]);
+  const treeCall = bodies.find((call) => call.url.endsWith("/git/trees"));
+  assert.deepEqual(
+    treeCall.body.tree.map((entry) => [entry.path, entry.mode, entry.type]),
+    [
+      ["main.ts", "100644", "blob"],
+      ["src/brand-new.ts", "100644", "blob"],
+    ],
+  );
+  assert.equal(treeCall.body.base_tree, "tree");
+});
+
+test("publishing refuses unsafe new paths before any write", async () => {
+  const methods = [];
+  const client = new GitHub("test-only-token", async (_, options) => {
+    methods.push(options.method);
+    return new Response(
+      JSON.stringify({ object: { sha: "head" }, sha: "new" }),
+    );
+  });
+  for (const path of [".git/hooks/x", "../escape.ts", "main.ts/child"]) {
+    await assert.rejects(
+      client.publish(repo, "work/x", "Add", [{ path, content: "x" }]),
+      /Cannot add/,
+    );
+  }
+  assert.ok(methods.every((method) => method === "GET"));
 });

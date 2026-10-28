@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCommand, resolvePath } from "../src/commands.ts";
+import {
+  extractCodeBlock,
+  freshPath,
+  parseCommand,
+  resolvePath,
+} from "../src/commands.ts";
 
 test("slash commands map to real actions", () => {
   assert.deepEqual(parseCommand("/open octocat/Hello-World"), {
@@ -85,4 +90,81 @@ test("publish is only triggered by an explicit command or an imperative sentence
   assert.equal(parseCommand("How do I publish my changes to GitHub?"), null);
   assert.equal(parseCommand("Explain what publish does in this code"), null);
   assert.equal(parseCommand("commit"), null);
+});
+
+test("/new carries an optional path and never matches plain sentences", () => {
+  assert.deepEqual(parseCommand("/new src/util.ts"), {
+    type: "new",
+    path: "src/util.ts",
+    description: "",
+    onExists: "error",
+  });
+  assert.deepEqual(parseCommand("/new"), {
+    type: "new",
+    path: "",
+    description: "",
+    onExists: "error",
+  });
+  assert.deepEqual(parseCommand("/new docs/a.md write a short intro"), {
+    type: "new",
+    path: "docs/a.md",
+    description: "write a short intro",
+    onExists: "error",
+  });
+  assert.equal(parseCommand("new feature ideas for this file"), null);
+});
+
+test("plain requests to create a file are handled by the app, questions are not", () => {
+  const text = "write a new readme containing a smiley";
+  assert.deepEqual(parseCommand(text), {
+    type: "new",
+    path: "README.md",
+    description: text,
+    onExists: "fresh",
+  });
+  assert.equal(
+    parseCommand("Create a README.md with install steps").path,
+    "README.md",
+  );
+  const named = parseCommand(
+    "Please create a new file called src/hello.ts that prints hi.",
+  );
+  assert.equal(named.path, "src/hello.ts");
+  assert.equal(named.onExists, "open");
+  assert.equal(
+    parseCommand("create a python file named utils.py.").path,
+    "utils.py",
+  );
+  for (const question of [
+    "how do I write a readme?",
+    "Can you create a readme for me",
+    "write a function that sorts a list",
+    "create a file",
+    "explain this readme",
+  ])
+    assert.equal(parseCommand(question), null, question);
+});
+
+test("extractCodeBlock takes exactly one fenced block and ignores surrounding prose", () => {
+  assert.equal(extractCodeBlock("```ts\nconst a = 1\n```"), "const a = 1");
+  assert.equal(
+    extractCodeBlock(
+      "Here you go:\n```typescript\nlet x\nlet y\n```\nHope that helps.",
+    ),
+    "let x\nlet y",
+  );
+  assert.equal(extractCodeBlock("export const a = 1"), null);
+  assert.equal(extractCodeBlock("```a\n1\n```\n```b\n2\n```"), null);
+  assert.equal(extractCodeBlock("```ts\nunterminated"), null);
+});
+
+test("freshPath never reuses an existing name", () => {
+  assert.equal(freshPath(["a.ts"], "README.md"), "README.md");
+  assert.equal(freshPath(["README.md"], "README.md"), "README-2.md");
+  assert.equal(
+    freshPath(["README.md", "README-2.md"], "README.md"),
+    "README-3.md",
+  );
+  assert.equal(freshPath(["docs/notes"], "docs/notes"), "docs/notes-2");
+  assert.equal(freshPath(["src.v1/app"], "src.v1/app"), "src.v1/app-2");
 });

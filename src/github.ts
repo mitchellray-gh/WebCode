@@ -57,6 +57,44 @@ export function validBranch(branch: string) {
   );
 }
 
+// Returns an error message, or "" when a new file path is safe to create.
+export function validateNewPath(path: string, existing: string[]) {
+  if (!path || path.length > 200)
+    return "Enter a file path up to 200 characters.";
+  if (
+    path.startsWith("/") ||
+    path.endsWith("/") ||
+    path.includes("\\") ||
+    path.includes(":") ||
+    Array.from(path).some((character) => character.charCodeAt(0) < 32)
+  )
+    return "Use a relative path like src/app.ts (no leading or trailing slash, backslash or colon).";
+  const segments = path.split("/");
+  if (
+    segments.some(
+      (segment) =>
+        !segment ||
+        segment === "." ||
+        segment === ".." ||
+        segment.toLowerCase() === ".git" ||
+        segment !== segment.trim(),
+    )
+  )
+    return "That path has an empty, relative (. or ..), .git or space-padded part.";
+  if (existing.includes(path)) return `${path} already exists.`;
+  if (existing.some((other) => other.startsWith(`${path}/`)))
+    return `${path} is already a folder.`;
+  if (
+    segments
+      .slice(0, -1)
+      .some((_, index) =>
+        existing.includes(segments.slice(0, index + 1).join("/")),
+      )
+  )
+    return "A parent of that path is an existing file.";
+  return "";
+}
+
 // GitHub pre-fills the fine-grained token form from these query parameters.
 export const TOKEN_URL =
   "https://github.com/settings/personal-access-tokens/new?name=technicalskills&description=Browser+editor%3A+read+and+write+repository+contents&expires_in=30&contents=write";
@@ -210,19 +248,20 @@ export class GitHub {
         "Source branch changed on GitHub. Download your edits, then reopen the repository before publishing.",
       );
     const tree = [];
+    const existingPaths = repo.files.map((file) => file.path);
     for (const change of changes) {
       const original = repo.files.find((file) => file.path === change.path);
-      if (!original)
-        throw new Error(
-          "Only existing repository files can be published in this version.",
-        );
+      if (!original) {
+        const problem = validateNewPath(change.path, existingPaths);
+        if (problem) throw new Error(`Cannot add ${change.path}: ${problem}`);
+      }
       const blob = await this.request(`${base}/git/blobs`, "POST", {
         content: change.content,
         encoding: "utf-8",
       });
       tree.push({
         path: change.path,
-        mode: original.mode,
+        mode: original?.mode ?? "100644",
         type: "blob",
         sha: blob.sha,
       });

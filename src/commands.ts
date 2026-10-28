@@ -3,6 +3,13 @@ export type Command =
   | { type: "open"; slug: string; branch: string }
   | { type: "files"; filter: string }
   | { type: "read"; path: string }
+  | {
+      type: "new";
+      path: string;
+      description: string;
+      // error: explicit /new; open: a named file; fresh: "a new readme" never touches existing files.
+      onExists: "error" | "open" | "fresh";
+    }
   | { type: "publish"; branch: string; message: string };
 
 export const HELP = [
@@ -10,6 +17,7 @@ export const HELP = [
   "/open owner/repo [branch]  connect to a repository (or paste a github.com link after 'open')",
   "/files [text]  list files in the connected repository",
   "/read path  open a file in the editor, then use Explain or Edit",
+  "/new [path]  create a new file (e.g. /new src/util.ts), then use Edit to have the assistant write it",
   "/publish [branch] [message]  commit all local changes to a NEW branch (asks you to confirm first)",
 ].join("\n");
 
@@ -33,6 +41,15 @@ export function parseCommand(text: string): Command | null {
         return { type: "files", filter: argument };
       case "read":
         return argument ? { type: "read", path: argument } : { type: "help" };
+      case "new": {
+        const [path = "", ...rest] = argument.split(/\s+/).filter(Boolean);
+        return {
+          type: "new",
+          path,
+          description: rest.join(" "),
+          onExists: "error",
+        };
+      }
       case "publish": {
         const [branch = "", ...rest] = argument.split(/\s+/).filter(Boolean);
         return { type: "publish", branch, message: rest.join(" ") };
@@ -47,6 +64,26 @@ export function parseCommand(text: string): Command | null {
     /\b(git\s?hub|changes|edits|branch)\b/i.test(trimmed)
   )
     return { type: "publish", branch: "", message: "" };
+  // Must start with a creation verb, so questions like "how do I write a readme" still reach the model.
+  const make =
+    /^(?:please\s+)?(?:create|write|make|add|generate)\s+(?:me\s+)?(?:an?\s+)?(?:new\s+)?/i.exec(
+      trimmed,
+    );
+  if (make) {
+    const after = trimmed.slice(make[0].length);
+    const named = /^(?:\w+\s+)?file\s+(?:named|called)\s+(\S+)/i.exec(after);
+    const path = /^readme(?:\.md)?\b/i.test(after)
+      ? "README.md"
+      : named?.[1].replace(/[.,;:!?'"`]+$/, "");
+    if (path)
+      if (path)
+        return {
+          type: "new",
+          path,
+          description: trimmed,
+          onExists: named ? "open" : "fresh",
+        };
+  }
   if (/^(please\s+)?(connect|open|access|link|load)\b/i.test(trimmed)) {
     const match = GITHUB_URL.exec(trimmed);
     if (match) {
@@ -70,4 +107,22 @@ export function resolvePath(paths: string[], wanted: string): string[] {
   );
   if (suffix.length) return suffix;
   return paths.filter((path) => path.toLowerCase().includes(lower));
+}
+
+// Accepts exactly one fenced block, so surrounding prose is dropped but ambiguous replies stage nothing.
+export function extractCodeBlock(text: string): string | null {
+  const blocks = [...text.matchAll(/```[^\n]*\n([\s\S]*?)\n```/g)];
+  return blocks.length === 1 ? blocks[0][1] : null;
+}
+
+// README.md -> README-2.md, README-3.md ... so "a new readme" never overwrites an existing one.
+export function freshPath(paths: string[], wanted: string): string {
+  if (!paths.includes(wanted)) return wanted;
+  const dot = wanted.lastIndexOf(".");
+  const [stem, ext] =
+    dot > wanted.lastIndexOf("/") + 1
+      ? [wanted.slice(0, dot), wanted.slice(dot)]
+      : [wanted, ""];
+  for (let n = 2; ; n++)
+    if (!paths.includes(`${stem}-${n}${ext}`)) return `${stem}-${n}${ext}`;
 }

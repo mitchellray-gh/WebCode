@@ -45,7 +45,8 @@ File edits, transcript, and credentials are session-only. Download edited files 
 
 ## Limits
 
-- Existing text files only; no file creation/deletion, binary editing, or symlink traversal. Files load lazily, limited to 500 KB. GitHub-truncated trees are rejected.
+- Text files only. You can create new files (New file button, `/new path [what it should contain]`, or plain requests like "write a new readme containing a smiley" or "create a file called src/util.ts that ..."; folders are created implicitly, "a new readme" picks a fresh name such as `README-2.md` rather than overwriting) and publish them, but not delete, rename or move files, edit binaries, or follow symlinks. Files load lazily, limited to 500 KB. GitHub-truncated trees are rejected. New paths are validated: relative only, no `..`, no `.git`, no collisions with existing files or folders.
 - No shell, build/test runner, local filesystem access, autonomous agent loop, or automatic commits.
 - GitHub limits and permissions, network availability, GPU memory, and WebGPU driver support still apply.
 - Unit tests use deterministic summary stubs and mocked GitHub responses. They check compaction structure, budgets and failure handling, not semantic summary quality. Real inference requires downloading weights on compatible hardware.
+
