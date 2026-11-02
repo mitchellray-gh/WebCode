@@ -49,6 +49,17 @@ test("ordinary requests and unknown slashes reach the model", () => {
   assert.equal(parseCommand("/usr/bin is a path, explain it"), null);
 });
 
+test("running a web app is a real app action, but questions about it reach the model", () => {
+  assert.deepEqual(parseCommand("/run"), { type: "run", path: "" });
+  assert.deepEqual(parseCommand("/run site/about.html"), { type: "run", path: "site/about.html" });
+  for (const alias of ["/preview", "/launch", "/serve"])
+    assert.equal(parseCommand(alias).type, "run");
+  for (const text of ["run the app", "Please launch my web app", "preview the site", "start the application", "serve this page"])
+    assert.deepEqual(parseCommand(text), { type: "run", path: "" }, text);
+  for (const text of ["how do I run the app?", "run the tests", "explain why the app crashes", "start a timer in the app", "launch codes are secret"])
+    assert.equal(parseCommand(text), null, text);
+});
+
 test("path resolution prefers exact, then suffix, then substring", () => {
   const paths = [
     "README.md",

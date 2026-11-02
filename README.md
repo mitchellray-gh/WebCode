@@ -59,6 +59,14 @@ Choose **Import workspace ZIP** to reopen a downloaded project. Import replaces 
 
 The browser controls where downloads are saved. Keep ZIP backups even with autosave.
 
+### Preview and serve web apps
+
+Choose the **Play** button above the editor (or type `/run [page.html]`, or "run the app" in the assistant) to launch a web app from your open files. It serves static HTML, CSS and JavaScript from memory inside your browser: relative `<link rel="stylesheet">` and `<script src>` files are inlined, pages can link to each other, and a console panel shows `console.*` output and runtime errors with line numbers (there are no devtools on a phone). **Reload** picks up your latest edits; **Download HTML** saves a self-contained single file you can open anywhere or host later.
+
+- **Isolation:** the app runs in a sandboxed iframe with an opaque origin and no `allow-same-origin`: it cannot read your workspace, recovery copy, Neon key, GitHub token or any saved data, and it cannot navigate this page or open popups. `localStorage`/`sessionStorage` are replaced with temporary in-memory versions because browsers block the real ones there. Network requests made by the previewed app are **not** blocked, so don't put secrets in previewed code. Modal dialogs (`alert`) are allowed; an infinite loop in the app can freeze the tab, though your work is recovered from the once-a-second local save.
+- **Not a real server:** nothing listens on a port, no other device can reach the preview, and Node/Express/Python servers, npm, bundlers, TypeScript, JSX and `import` between workspace files (ES modules) are not supported; the preview says so when it sees them. Only files open in the editor are served (open remote files first), and `fetch()` of workspace files isn't supported. To run those projects, download the ZIP and run them on a computer.
+- Launching is always an explicit action. The goal loop and the assistant never run code on their own.
+
 ### Recovery and private Neon saves
 
 The app automatically saves a local recovery copy in IndexedDB every second when changes are pending, including partial responses. On reopen it restores files, active file, conversation, summaries, pinned requirements, project notes, prompt draft, model selection, and pending proposal. Interrupted requests are marked as interrupted, not silently resumed. Recovered files reopen as a **local workspace**, not an authenticated GitHub checkout. Only open/new files are saved, not unopened remote repository files. Models must be loaded again.
@@ -110,6 +118,6 @@ File edits and conversation state have local recovery and optional private cloud
 ## Limits
 
 - Text files only. You can create new files (New file button, `/new path [what it should contain]`, or plain requests like "write a new readme containing a smiley" or "create a file called src/util.ts that ..."; folders are created implicitly, "a new readme" picks a fresh name such as `README-2.md` rather than overwriting) and publish them, but not delete, rename or move files, edit binaries, or follow symlinks. Files load lazily, limited to 500 KB. GitHub-truncated trees are rejected. New paths are validated: relative only, no `..`, no `.git`, no collisions with existing files or folders.
-- No shell, build/test runner, local filesystem access, or automatic commits. The opt-in goal loop edits locally only; it cannot execute code or independently access GitHub/network tools.
+- No shell, build/test runner, local filesystem access, or automatic commits. The opt-in goal loop edits locally only; it cannot execute code or independently access GitHub/network tools. The only code that runs is a web app you explicitly launch in the isolated preview above.
 - GitHub limits and permissions, network availability, GPU memory, and WebGPU driver support still apply.
 - Unit tests use deterministic compaction and mocked GitHub responses. They check compaction structure, budgets and failure handling, not semantic summary quality. Real inference requires downloading weights on compatible hardware.

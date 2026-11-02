@@ -1212,6 +1212,57 @@ summary {
   overflow: auto;
   min-height: 150px;
 }
+.preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.preview-bar select {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 8px;
+  font-size: 16px;
+}
+.preview-note,
+.preview .form-error {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: 58dvh;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+.preview-console-box summary {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.preview-console {
+  max-height: 18dvh;
+  margin: 0;
+  padding: 0 16px 10px;
+  overflow: auto;
+  list-style: none;
+  font: 11px/1.6 ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+.preview-console .warn {
+  color: #8a5a00;
+}
+.preview-console .error {
+  color: #b3261e;
+}
 .diff-content .cm-content {
   padding-bottom: 20px !important;
 }
@@ -1705,6 +1756,14 @@ summary {
   }
   .diff-content {
     max-height: calc(100dvh - 190px);
+  }
+  .preview-frame {
+    height: calc(100dvh - 300px);
+    min-height: 220px;
+  }
+  .preview-note,
+  .preview .form-error {
+    font-size: 12px;
   }
   .review-footer {
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));

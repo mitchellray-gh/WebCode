@@ -26,6 +26,7 @@ import {
   LoaderCircle,
   MessageSquare,
   Pin,
+  Play,
   Plus,
   Search,
   ShieldCheck,
@@ -86,6 +87,8 @@ import { recoverySession } from "./recovery";
 import type { Proposal, Session, TranscriptTurn } from "./session";
 import { MAX_SESSION_BYTES } from "./session";
 import GoalPanel from "./GoalPanel";
+import Preview from "./Preview";
+import { defaultEntry, previewPages } from "./sandbox";
 import { applyGoalEdit, goalResponseSchema } from "./goalLoop";
 import type { GoalCall, GoalEdit, GoalFiles, GoalSettings } from "./goalLoop";
 
@@ -294,6 +297,7 @@ function App() {
   const [selectedRange, setSelectedRange] = useState({ from: 0, to: 0 });
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [review, setReview] = useState<Proposal | null>(null);
+  const [previewEntry, setPreviewEntry] = useState("");
   const model = useRef<BrowserModel | null>(null);
   const controller = useRef<AbortController | null>(null);
   const memoryRef = useRef<Memory>(emptyMemory());
@@ -687,6 +691,26 @@ function App() {
       ? `${repo.owner}/${repo.name}`
       : "the scratch workspace (no repository connected)";
     if (command.type === "help") return reply(HELP);
+    if (command.type === "run") {
+      const open = Object.keys(files);
+      const pages = previewPages(open);
+      if (!pages.length)
+        return reply(
+          "There is no HTML page to run. Create one (for example /new index.html a calculator page) and use Edit to write it. The preview serves static HTML, CSS and JavaScript from your open files; it cannot run Node servers, npm, TypeScript or JSX.",
+        );
+      const matches = command.path ? resolvePath(pages, command.path) : [];
+      if (command.path && matches.length !== 1)
+        return reply(
+          matches.length
+            ? `Several pages match; be more specific:\n${matches.join("\n")}`
+            : `No HTML page matches "${command.path}". Pages: ${pages.join(", ")}`,
+        );
+      const entry = command.path ? matches[0] : defaultEntry(open, active);
+      setPreviewEntry(entry);
+      return reply(
+        `Launched ${entry} in an isolated in-browser preview. Edit, then choose Reload to see changes. Only open files are served.`,
+      );
+    }
     if (command.type === "new") {
       if (!command.path) {
         openNewFile();
@@ -1358,6 +1382,15 @@ function App() {
             </button>
           ))}
           <div className="tab-spacer" />
+          <button
+            className="icon-button"
+            title="Preview app (HTML, CSS, JavaScript)"
+            aria-label="Preview app"
+            disabled={!defaultEntry(Object.keys(files), active)}
+            onClick={() => setPreviewEntry(defaultEntry(Object.keys(files), active))}
+          >
+            <Play size={16} />
+          </button>
           <button
             className="icon-button"
             title="Download current file"
@@ -2217,6 +2250,15 @@ function App() {
               </button>
             </footer>
           </form>
+        </Dialog>
+      )}
+      {previewEntry && (
+        <Dialog wide title="Preview app" close={() => setPreviewEntry("")}>
+          <Preview
+            entry={previewEntry}
+            files={() => Object.fromEntries(Object.entries(files).map(([path, file]) => [path, file.content]))}
+            save={(name, html) => download(name, html, "text/html")}
+          />
         </Dialog>
       )}
       {review && (

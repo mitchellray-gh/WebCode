@@ -1,5 +1,6 @@
 export type Command =
   | { type: "help" }
+  | { type: "run"; path: string }
   | { type: "open"; slug: string; branch: string }
   | { type: "files"; filter: string }
   | { type: "read"; path: string }
@@ -19,6 +20,7 @@ export const HELP = [
   "/read path  open a file in the editor, then use Explain or Edit",
   "/new [path]  create a new file (e.g. /new src/util.ts), then use Edit to have the assistant write it",
   "/publish [branch] [message]  commit all local changes to a NEW branch (asks you to confirm first)",
+  "/run [page.html]  preview and serve a web app (HTML/CSS/JavaScript) from your workspace in an isolated in-browser sandbox",
 ].join("\n");
 
 const GITHUB_URL =
@@ -39,6 +41,11 @@ export function parseCommand(text: string): Command | null {
       }
       case "files":
         return { type: "files", filter: argument };
+      case "run":
+      case "preview":
+      case "launch":
+      case "serve":
+        return { type: "run", path: argument };
       case "read":
         return argument ? { type: "read", path: argument } : { type: "help" };
       case "new": {
@@ -58,6 +65,9 @@ export function parseCommand(text: string): Command | null {
         return null;
     }
   }
+  // Must start with the verb and name the thing to run, so "how do I run the app" or "run the tests" reach the model.
+  if (/^(?:please\s+)?(?:run|launch|preview|serve|start)\s+(?:the\s+|my\s+|this\s+)?(?:web\s*)?(?:app(?:lication)?|site|page|website|preview)\b/i.test(trimmed))
+    return { type: "run", path: "" };
   // Must start with the verb so questions like "how do I publish..." still reach the model.
   if (
     /^(please\s+)?(publish|push|commit)\b/i.test(trimmed) &&
