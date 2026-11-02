@@ -44,6 +44,8 @@ Compaction extends session continuity, not the physical context window or reason
 
 No repository or GitHub token is required. Start in the scratch workspace, use **New file** in Explorer (or `/new src/app.ts [description]`), and type directly in the editor. For AI-written content, load a model, choose **Edit**, then review and apply the proposed code.
 
+In the assistant prompt, **Enter** sends and **Shift+Enter** inserts a new line. Ctrl+Enter and Command+Enter also send. Sending remains disabled until the request is valid; Enter does not submit while composing text with an input method.
+
 Choose **Download workspace ZIP** in Explorer (the **Files** tab on mobile) to save all open and newly created files to your phone or computer, with their folder paths and current edits preserved. Unapplied proposals, conversation history, and credentials are not included. With a repository connected, unopened remote files are not included. Extract the ZIP before uploading the files to GitHub later; uploading the ZIP alone does not populate a repository's source files.
 
 Choose **Import workspace ZIP** to reopen a downloaded project. Import replaces the workspace only after validation and confirmation, disconnects GitHub, and clears the previous conversation/notes. Only UTF-8 text files are supported; binary files, invalid paths, and file/folder collisions fail atomically. Limits: 3 MB compressed input, 1,000 files, 500 KB per file, and 2 MB expanded text. ZIP creation/import runs locally.

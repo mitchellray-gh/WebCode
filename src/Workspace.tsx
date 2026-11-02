@@ -1741,15 +1741,20 @@ function App() {
                 }
                 value={request}
                 maxLength={12000}
+                title="Enter to send; Shift+Enter for a new line"
                 disabled={busy}
                 onChange={(event) => setRequest(event.target.value)}
                 onKeyDown={(event) => {
                   if (
                     event.key === "Enter" &&
-                    (event.ctrlKey || event.metaKey)
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing &&
+                    event.nativeEvent.keyCode !== 229
                   ) {
                     event.preventDefault();
-                    event.currentTarget.form?.requestSubmit();
+                    event.currentTarget.form
+                      ?.querySelector<HTMLButtonElement>('button[type="submit"]')
+                      ?.click();
                   }
                 }}
               />
@@ -1771,6 +1776,7 @@ function App() {
                   </button>
                 ) : (
                   <button
+                    type="submit"
                     className="send-button"
                     title="Send request"
                     aria-label="Send request"
