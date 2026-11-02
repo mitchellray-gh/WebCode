@@ -96,6 +96,7 @@ import { searchWorkspace } from "./agentTools";
 import { checkPage } from "./pageCheck";
 import SpacePanel from "./SpacePanel";
 import { inlineBridge, inlineExtension } from "./inlineSuggest";
+import { findInstructionPath, instructionBlock } from "./repoInstructions";
 import { SUGGEST_INSTRUCTION, cleanSuggestion, suggestionPrompt } from "./suggest";
 import ConnectorPanel from "./ConnectorPanel";
 import { McpClient, toolSchema } from "./mcp";
@@ -299,7 +300,9 @@ function App() {
   const [connector, setConnector] = useState<{ client: McpClient; server: string; tools: McpTool[] } | null>(null);
   const approvedTools = useRef(new Set<string>());
   const spaceInfo = spaceContext(spaces);
-  const effectivePinned = [pinned, spaceInfo.requirements].filter(Boolean).join("\n\n");
+  // Memory only: re-read from the repository each time it is opened, so it never goes stale in a saved session.
+  const [repoInstructions, setRepoInstructions] = useState<{ path: string; block: string } | null>(null);
+  const effectivePinned = [pinned, spaceInfo.requirements, repoInstructions?.block ?? ""].filter(Boolean).join("\n\n");
   const [notes, setNotes] = useState("");
   const [goalSettings, setGoalSettings] = useState<GoalSettings>({ goal: "", steering: "" });
   const [goalRunning, setGoalRunning] = useState(false);
@@ -440,7 +443,7 @@ function App() {
     setSelectedModelId(saved.model);
     setProposal(saved.proposal);
     setReview(null);
-    setRepo(null); setToken(""); setTokenInput(""); setPublishedUrl(""); setPublishedBranch(null);
+    setRepo(null); setToken(""); setTokenInput(""); setPublishedUrl(""); setPublishedBranch(null); setRepoInstructions(null);
     setFilter(""); setPrefilled(""); autoRun.current = false;
     setSelectedRange({ from: 0, to: 0 });
     nextId.current = Math.max(0, ...saved.transcript.map((turn) => turn.id),
@@ -568,6 +571,19 @@ function App() {
     }
   }
 
+  async function loadInstructions(repository: Repository, tokenValue: string) {
+    setRepoInstructions(null);
+    const path = findInstructionPath(repository.files.map((file) => file.path));
+    const file = repository.files.find((candidate) => candidate.path === path);
+    if (!file) return;
+    try {
+      const block = instructionBlock(path, await new GitHub(tokenValue).read(repository, file));
+      if (block) setRepoInstructions({ path, block });
+    } catch {
+      // Instruction files are optional; the repository still opens without them.
+    }
+  }
+
   async function openRepository(
     slug: string,
     branch: string,
@@ -609,6 +625,7 @@ function App() {
       }
       setRepo(repository);
       setToken(tokenValue.trim());
+      void loadInstructions(repository, tokenValue.trim());
       setFiles({});
       setActive("");
       setFilter("");
@@ -2125,6 +2142,17 @@ function App() {
                 ? "Agent mode is working on your open files and applying reviewed edits locally. Use its steering, Pause, or Stop controls."
                 : "Agent mode stopped. Review local changes before publishing.");
             }} failure={setError} />
+          {repoInstructions && (
+            <details className="pinned">
+              <summary>
+                Repository instructions ({repoInstructions.path})
+                <span className="status-dot online" />
+              </summary>
+              <p className="muted">Added to every request and to agent mode (shortened to fit). Remove it for this session if it gets in the way.</p>
+              <pre className="answer">{repoInstructions.block.split("\n").slice(1).join("\n")}</pre>
+              <button className="button" disabled={busy} onClick={() => setRepoInstructions(null)}>Stop using these instructions</button>
+            </details>
+          )}
           <details className="pinned">
             <summary>
               Spaces
