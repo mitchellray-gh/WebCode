@@ -350,3 +350,56 @@ test("publishing refuses unsafe new paths before any write", async () => {
   }
   assert.ok(methods.every((method) => method === "GET"));
 });
+
+test("issues are listed without pull requests, and reading one is bounded and validated", async () => {
+  const urls = [];
+  const client = new GitHub("", async (url) => {
+    urls.push(String(url));
+    if (String(url).includes("/issues?state=open"))
+      return new Response(JSON.stringify([
+        { number: 3, title: "Crash on start" },
+        { number: 4, title: "A pull request", pull_request: {} },
+        { number: "x", title: "bad" },
+      ]));
+    if (String(url).endsWith("/issues/3"))
+      return new Response(JSON.stringify({ title: "Crash on start", body: "b".repeat(9000), html_url: "https://github.com/o/r/issues/3" }));
+    if (String(url).endsWith("/issues/3/comments?per_page=5"))
+      return new Response(JSON.stringify([{ body: "c".repeat(2000) }, { body: null }]));
+    return new Response(JSON.stringify({ title: "PR", pull_request: {} }));
+  });
+  assert.deepEqual(await client.listIssues({ owner: "o", name: "r" }), [{ number: 3, title: "Crash on start" }]);
+  const issue = await client.readIssue({ owner: "o", name: "r" }, 3);
+  assert.equal(issue.body.length, 4000);
+  assert.deepEqual(issue.comments.map((comment) => comment.length), [600, 0]);
+  assert.equal(issue.url, "https://github.com/o/r/issues/3");
+  await assert.rejects(client.readIssue({ owner: "o", name: "r" }, 9), /is a pull request/);
+  for (const number of [0, -1, 1.5, 10_000_000, NaN])
+    await assert.rejects(client.readIssue({ owner: "o", name: "r" }, number), /valid issue number/);
+  assert.ok(urls.every((url) => url.startsWith("https://api.github.com/repos/o/r/")));
+});
+
+test("pull requests need a token, valid distinct branches and a title, and send only expected fields", async () => {
+  const repoRef = { owner: "o", name: "r" };
+  const valid = { head: "work/fix", base: "main", title: "Fix crash" };
+  await assert.rejects(new GitHub().openPullRequest(repoRef, valid), /Pull requests write/);
+  const calls = [];
+  const client = new GitHub("test-only-token", async (url, options) => {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify({ number: 12, html_url: "https://github.com/o/r/pull/12" }));
+  });
+  for (const bad of [
+    { ...valid, head: "main" }, { ...valid, head: "bad name" }, { ...valid, base: "a..b" },
+    { ...valid, title: "  " }, { ...valid, title: "x".repeat(201) },
+  ])
+    await assert.rejects(client.openPullRequest(repoRef, bad));
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await client.openPullRequest(repoRef, { ...valid, title: " Fix crash ", body: "y".repeat(5000) }), { number: 12, url: "https://github.com/o/r/pull/12" });
+  assert.equal(calls[0].url, "https://api.github.com/repos/o/r/pulls");
+  assert.equal(calls[0].options.method, "POST");
+  const sent = JSON.parse(calls[0].options.body);
+  assert.deepEqual(Object.keys(sent).sort(), ["base", "body", "head", "title"]);
+  assert.equal(sent.title, "Fix crash");
+  assert.equal(sent.body.length, 4000);
+  const odd = new GitHub("test-only-token", async () => new Response(JSON.stringify({ number: "12" })));
+  await assert.rejects(odd.openPullRequest(repoRef, valid), /unexpected pull request response/);
+});

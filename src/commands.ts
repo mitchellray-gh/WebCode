@@ -11,7 +11,10 @@ export type Command =
       // error: explicit /new; open: a named file; fresh: "a new readme" never touches existing files.
       onExists: "error" | "open" | "fresh";
     }
-  | { type: "publish"; branch: string; message: string };
+  | { type: "publish"; branch: string; message: string }
+  | { type: "issues" }
+  | { type: "issue"; number: number }
+  | { type: "pr"; title: string };
 
 export const HELP = [
   "The assistant model cannot reach GitHub itself; this app does it for you. Commands:",
@@ -20,6 +23,9 @@ export const HELP = [
   "/read path  open a file in the editor, then use Explain or Edit",
   "/new [path]  create a new file (e.g. /new src/util.ts), then use Edit to have the assistant write it",
   "/publish [branch] [message]  commit all local changes to a NEW branch (asks you to confirm first)",
+  "/issues  list open issues in the connected repository (needs a token for private repositories)",
+  "/issue N  load issue N as the Agent mode goal; turn on Agent mode and press Start",
+  "/pr [title]  open a pull request from the branch you just published (needs a token with Pull requests write)",
   "/run [page.html]  preview and serve a web app (HTML/CSS/JavaScript) from your workspace in an isolated in-browser sandbox",
 ].join("\n");
 
@@ -41,6 +47,14 @@ export function parseCommand(text: string): Command | null {
       }
       case "files":
         return { type: "files", filter: argument };
+      case "issues":
+        return { type: "issues" };
+      case "issue": {
+        const number = /^#?(\d{1,7})$/.exec(argument);
+        return number ? { type: "issue", number: Number(number[1]) } : { type: "help" };
+      }
+      case "pr":
+        return { type: "pr", title: argument };
       case "run":
       case "preview":
       case "launch":
@@ -69,6 +83,8 @@ export function parseCommand(text: string): Command | null {
   if (/^(?:please\s+)?(?:run|launch|preview|serve|start)\s+(?:the\s+|my\s+|this\s+)?(?:web\s*)?(?:app(?:lication)?|site|page|website|preview)\b/i.test(trimmed))
     return { type: "run", path: "" };
   // Must start with the verb so questions like "how do I publish..." still reach the model.
+  if (/^(?:please\s+)?(?:open|create|make)\s+(?:a\s+|the\s+)?pull\s*request\b/i.test(trimmed))
+    return { type: "pr", title: "" };
   if (
     /^(please\s+)?(publish|push|commit)\b/i.test(trimmed) &&
     /\b(git\s?hub|changes|edits|branch)\b/i.test(trimmed)

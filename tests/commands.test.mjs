@@ -179,3 +179,17 @@ test("freshPath never reuses an existing name", () => {
   assert.equal(freshPath(["docs/notes"], "docs/notes"), "docs/notes-2");
   assert.equal(freshPath(["src.v1/app"], "src.v1/app"), "src.v1/app-2");
 });
+
+test("issue and pull request commands are explicit, and questions about them reach the model", () => {
+  assert.deepEqual(parseCommand("/issues"), { type: "issues" });
+  assert.deepEqual(parseCommand("/issue 12"), { type: "issue", number: 12 });
+  assert.deepEqual(parseCommand("/issue #7"), { type: "issue", number: 7 });
+  assert.deepEqual(parseCommand("/issue"), { type: "help" });
+  assert.deepEqual(parseCommand("/issue abc"), { type: "help" });
+  assert.deepEqual(parseCommand("/pr"), { type: "pr", title: "" });
+  assert.deepEqual(parseCommand("/pr Fix the crash"), { type: "pr", title: "Fix the crash" });
+  for (const text of ["open a pull request", "Please create the pull request", "make a pull request"])
+    assert.deepEqual(parseCommand(text), { type: "pr", title: "" }, text);
+  for (const text of ["how do I open a pull request?", "explain what a pull request is", "review the pull request changes"])
+    assert.equal(parseCommand(text), null, text);
+});

@@ -13,6 +13,7 @@ export type Repository = {
   files: RepoFile[];
 };
 type Fetcher = typeof fetch;
+export type Issue = { number: number; title: string; body: string; comments: string[]; url: string };
 
 export function parseRepository(value: string) {
   let slug = value.trim().replace(/\/$/, "");
@@ -97,7 +98,7 @@ export function validateNewPath(path: string, existing: string[]) {
 
 // GitHub pre-fills the fine-grained token form from these query parameters.
 export const TOKEN_URL =
-  "https://github.com/settings/personal-access-tokens/new?name=technicalskills&description=Browser+editor%3A+read+and+write+repository+contents&expires_in=30&contents=write";
+  "https://github.com/settings/personal-access-tokens/new?name=technicalskills&description=Browser+editor%3A+read+and+write+repository+contents%2C+open+pull+requests&expires_in=30&contents=write&pull_requests=write&issues=read";
 
 export class EmptyRepositoryError extends Error {
   constructor() {
@@ -200,6 +201,50 @@ export class GitHub {
       tree: commit.tree.sha,
       files,
     };
+  }
+
+  async listIssues(repo: Pick<Repository, "owner" | "name">): Promise<{ number: number; title: string }[]> {
+    const items: unknown = await this.request(`${this.base(repo)}/issues?state=open&per_page=15`);
+    if (!Array.isArray(items)) throw new Error("GitHub returned an unexpected issue list.");
+    return items
+      .filter((item: { pull_request?: unknown }) => !item.pull_request)
+      .map((item: { number?: unknown; title?: unknown }) => ({ number: Number(item.number), title: String(item.title ?? "").slice(0, 120) }))
+      .filter((item) => Number.isInteger(item.number));
+  }
+
+  async readIssue(repo: Pick<Repository, "owner" | "name">, number: number): Promise<Issue> {
+    if (!Number.isInteger(number) || number < 1 || number > 9_999_999) throw new Error("Enter a valid issue number.");
+    const base = `${this.base(repo)}/issues/${number}`;
+    const issue: { title?: unknown; body?: unknown; pull_request?: unknown; html_url?: unknown } = await this.request(base);
+    if (issue.pull_request) throw new Error(`#${number} is a pull request, not an issue. Use /review ${number}.`);
+    const comments: unknown = await this.request(`${base}/comments?per_page=5`);
+    return {
+      number,
+      title: String(issue.title ?? "").slice(0, 200),
+      body: String(issue.body ?? "").slice(0, 4000),
+      comments: Array.isArray(comments) ? comments.map((comment: { body?: unknown }) => String(comment.body ?? "").slice(0, 600)) : [],
+      url: String(issue.html_url ?? ""),
+    };
+  }
+
+  /** Opens a pull request from an already-published branch. Needs a token with Pull requests write permission. */
+  async openPullRequest(
+    repo: Pick<Repository, "owner" | "name">,
+    request: { head: string; base: string; title: string; body?: string },
+  ): Promise<{ number: number; url: string }> {
+    if (!this.token) throw new Error("A GitHub token with Pull requests write permission is required.");
+    if (!validBranch(request.head) || !validBranch(request.base) || request.head === request.base)
+      throw new Error("Choose a valid published branch that differs from the base branch.");
+    if (!request.title.trim() || request.title.length > 200) throw new Error("Enter a pull request title of 1-200 characters.");
+    const created: { number?: unknown; html_url?: unknown } = await this.request(`${this.base(repo)}/pulls`, "POST", {
+      title: request.title.trim(),
+      head: request.head,
+      base: request.base,
+      body: (request.body ?? "").slice(0, 4000),
+    });
+    if (typeof created.number !== "number" || typeof created.html_url !== "string")
+      throw new Error("GitHub returned an unexpected pull request response.");
+    return { number: created.number, url: created.html_url };
   }
 
   // GitHub code search always requires authentication; it finds files by content without downloading the repository.
