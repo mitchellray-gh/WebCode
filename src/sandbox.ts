@@ -13,6 +13,21 @@ const MAX_BYTES = 2_000_000;
 
 export const previewPages = (paths: string[]) => paths.filter((path) => PAGE.test(path));
 
+// Unsaved HTML (a chat reply or a file with the wrong extension) is previewed under this virtual name.
+export const SNIPPET_PAGE = "preview-snippet.html";
+const DOCUMENT = /^\s*(?:<!doctype\s+html|<html[\s>])/i;
+export const looksLikeHtml = (text: string) => DOCUMENT.test(text);
+
+/** The page in a finished model reply: one fenced html block, or a bare HTML document. Ambiguous replies give null. */
+export function htmlFromReply(reply: string): string | null {
+  const fences = [...reply.matchAll(/```([^\n]*)\n([\s\S]*?)\n```/g)];
+  if (fences.length === 1) {
+    const [, language, code] = fences[0];
+    return /^html?$/i.test(language.trim()) || looksLikeHtml(code) ? code : null;
+  }
+  return fences.length === 0 && looksLikeHtml(reply) ? reply : null;
+}
+
 export function defaultEntry(paths: string[], active: string) {
   const pages = previewPages(paths);
   if (pages.includes(active)) return active;

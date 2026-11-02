@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPreview, defaultEntry, previewPages, resolveRef, PREVIEW_CHANNEL } from "../src/sandbox.ts";
+import { buildPreview, defaultEntry, htmlFromReply, looksLikeHtml, previewPages, resolveRef, PREVIEW_CHANNEL } from "../src/sandbox.ts";
 
 const page = `<!doctype html>
 <html><head><title>Calc</title>
@@ -9,6 +9,20 @@ const page = `<!doctype html>
 </head><body><button id="b">Add</button>
 <script src="./js/app.js"></script>
 </body></html>`;
+
+test("a finished reply that is a web page can be run, ambiguous or non-page replies cannot", () => {
+  const page = "<!DOCTYPE html>\n<html><body><h1>Calculator</h1></body></html>";
+  assert.equal(htmlFromReply(page), page);
+  assert.equal(htmlFromReply(`Here you go:\n\`\`\`html\n${page}\n\`\`\`\nEnjoy.`), page);
+  assert.equal(htmlFromReply("```\n" + page + "\n```"), page);
+  assert.equal(htmlFromReply("```html\n<div>fragment</div>\n```"), "<div>fragment</div>");
+  assert.equal(htmlFromReply(`\`\`\`html\n${page}\n\`\`\`\n\`\`\`js\nx()\n\`\`\``), null);
+  assert.equal(htmlFromReply("```ts\nconst a = 1;\n```"), null);
+  assert.equal(htmlFromReply("Use <b>bold</b> text."), null);
+  assert.equal(htmlFromReply("```html\n" + page), null);
+  assert.equal(looksLikeHtml("  \n<html lang='en'>"), true);
+  assert.equal(looksLikeHtml("const html = '<html>';"), false);
+});
 
 test("pages are found, with the active page and index.html preferred", () => {
   const paths = ["a.js", "docs/about.html", "site/index.html", "z.htm"];

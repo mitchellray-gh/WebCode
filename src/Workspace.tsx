@@ -88,7 +88,7 @@ import type { Proposal, Session, TranscriptTurn } from "./session";
 import { MAX_SESSION_BYTES } from "./session";
 import GoalPanel from "./GoalPanel";
 import Preview from "./Preview";
-import { defaultEntry, previewPages } from "./sandbox";
+import { defaultEntry, htmlFromReply, looksLikeHtml, previewPages, SNIPPET_PAGE } from "./sandbox";
 import { applyGoalEdit, goalResponseSchema } from "./goalLoop";
 import type { GoalCall, GoalEdit, GoalFiles, GoalSettings } from "./goalLoop";
 
@@ -298,6 +298,7 @@ function App() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [review, setReview] = useState<Proposal | null>(null);
   const [previewEntry, setPreviewEntry] = useState("");
+  const [previewSnippet, setPreviewSnippet] = useState("");
   const model = useRef<BrowserModel | null>(null);
   const controller = useRef<AbortController | null>(null);
   const memoryRef = useRef<Memory>(emptyMemory());
@@ -670,12 +671,37 @@ function App() {
     return "";
   }
 
-  function launchPreview() {
+  // Real HTML pages win; otherwise preview HTML found in the active file or the latest finished assistant reply.
+  function previewTarget() {
     const entry = defaultEntry(Object.keys(files), active);
-    if (entry) return setPreviewEntry(entry);
+    if (entry) return { entry, snippet: "" };
+    const html =
+      (activeFile && looksLikeHtml(activeFile.content) ? activeFile.content : null) ??
+      [...transcript].reverse().map((turn) => turn.status === "Complete" ? htmlFromReply(turn.response) : null).find(Boolean) ??
+      null;
+    return html ? { entry: SNIPPET_PAGE, snippet: html } : null;
+  }
+
+  function startPreview(entry: string, snippet = "") {
+    setPreviewSnippet(snippet);
+    setPreviewEntry(entry);
+  }
+
+  function launchPreview() {
+    const target = previewTarget();
+    if (target) return startPreview(target.entry, target.snippet);
     setNotice(
-      "Nothing to preview yet: Play runs web pages (HTML, CSS, JavaScript). Create one with /new index.html, write it with Edit, then press Play.",
+      "Nothing to preview yet: Play runs a web page (HTML, CSS, JavaScript). Ask the assistant for a complete HTML page, then press Play or Run under its reply, or create a file with /new index.html.",
     );
+  }
+
+  function saveSnippet(html: string) {
+    if (busy) return;
+    const path = freshPath(allPaths, "index.html");
+    const problem = createFile(path);
+    if (problem) return setError(problem);
+    setFiles((previous) => ({ ...previous, [path]: { ...previous[path], content: html } }));
+    setNotice(`Saved the reply as ${path}. Press Play to run it, or edit it first.`);
   }
 
   // Commands run in the app, not the model, so GitHub access is real rather than described.
@@ -700,23 +726,28 @@ function App() {
       : "the scratch workspace (no repository connected)";
     if (command.type === "help") return reply(HELP);
     if (command.type === "run") {
-      const open = Object.keys(files);
-      const pages = previewPages(open);
-      if (!pages.length)
+      const pages = previewPages(Object.keys(files));
+      if (command.path) {
+        const matches = resolvePath(pages, command.path);
+        if (matches.length !== 1)
+          return reply(
+            matches.length
+              ? `Several pages match; be more specific:\n${matches.join("\n")}`
+              : `No HTML page matches "${command.path}". Pages: ${pages.join(", ") || "none"}`,
+          );
+        startPreview(matches[0]);
+        return reply(`Launched ${matches[0]} in an isolated in-browser preview. Edit, then choose Reload to see changes. Only open files are served.`);
+      }
+      const target = previewTarget();
+      if (!target)
         return reply(
-          "There is no HTML page to run. Create one (for example /new index.html a calculator page) and use Edit to write it. The preview serves static HTML, CSS and JavaScript from your open files; it cannot run Node servers, npm, TypeScript or JSX.",
+          "There is no HTML page to run. Ask the assistant for a complete HTML page, or create one with /new index.html. The preview serves static HTML, CSS and JavaScript; it cannot run Node servers, npm, TypeScript or JSX.",
         );
-      const matches = command.path ? resolvePath(pages, command.path) : [];
-      if (command.path && matches.length !== 1)
-        return reply(
-          matches.length
-            ? `Several pages match; be more specific:\n${matches.join("\n")}`
-            : `No HTML page matches "${command.path}". Pages: ${pages.join(", ")}`,
-        );
-      const entry = command.path ? matches[0] : defaultEntry(open, active);
-      setPreviewEntry(entry);
+      startPreview(target.entry, target.snippet);
       return reply(
-        `Launched ${entry} in an isolated in-browser preview. Edit, then choose Reload to see changes. Only open files are served.`,
+        target.snippet
+          ? "Launched the HTML found in your active file or latest reply (not saved as a file; use Save as file under the reply to keep it)."
+          : `Launched ${target.entry} in an isolated in-browser preview. Edit, then choose Reload to see changes. Only open files are served.`,
       );
     }
     if (command.type === "new") {
@@ -1748,6 +1779,19 @@ function App() {
                       ? "Request failed."
                       : "...")}
               </pre>
+              {turn.status === "Complete" && turn.response.includes("<") && (() => {
+                const html = htmlFromReply(turn.response);
+                return html && (
+                  <div className="answer-actions">
+                    <button className="button" disabled={busy} onClick={() => startPreview(SNIPPET_PAGE, html)}>
+                      <Play size={14} />Run
+                    </button>
+                    <button className="button" disabled={busy} onClick={() => saveSnippet(html)}>
+                      <FilePlus size={14} />Save as file
+                    </button>
+                  </div>
+                );
+              })()}
             </article>
           ))}
           <div ref={endOfChat} />
@@ -2262,10 +2306,13 @@ function App() {
         </Dialog>
       )}
       {previewEntry && (
-        <Dialog wide title="Preview app" close={() => setPreviewEntry("")}>
+        <Dialog wide title="Preview app" close={() => { setPreviewEntry(""); setPreviewSnippet(""); }}>
           <Preview
             entry={previewEntry}
-            files={() => Object.fromEntries(Object.entries(files).map(([path, file]) => [path, file.content]))}
+            files={() => {
+              const live = Object.fromEntries(Object.entries(files).map(([path, file]) => [path, file.content]));
+              return previewSnippet ? { ...live, [SNIPPET_PAGE]: previewSnippet } : live;
+            }}
             save={(name, html) => download(name, html, "text/html")}
           />
         </Dialog>

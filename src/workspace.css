@@ -1223,6 +1223,12 @@ summary {
   overflow: auto;
   min-height: 150px;
 }
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
 .preview-bar {
   display: flex;
   flex-wrap: wrap;

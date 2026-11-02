@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, ArrowDownToLine } from "lucide-react";
-import { buildPreview, previewPages, resolveRef, PREVIEW_CHANNEL } from "./sandbox";
+import { buildPreview, previewPages, resolveRef, PREVIEW_CHANNEL, SNIPPET_PAGE } from "./sandbox";
 import type { PreviewBuild, PreviewFiles } from "./sandbox";
 
 type Line = { level: "log" | "info" | "warn" | "error"; text: string };
@@ -57,7 +57,7 @@ export default function Preview({ files: read, entry: first, save }: {
           <RefreshCw size={14} />Reload
         </button>
         <button className="button" disabled={typeof build === "string"}
-          onClick={() => typeof build !== "string" && save(entry.split("/").at(-1)!, build.standalone)}>
+          onClick={() => typeof build !== "string" && save(entry === SNIPPET_PAGE ? "index.html" : entry.split("/").at(-1)!, build.standalone)}>
           <ArrowDownToLine size={14} />Download HTML
         </button>
       </div>
