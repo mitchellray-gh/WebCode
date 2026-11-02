@@ -94,6 +94,9 @@ import type { GoalCall, GoalEdit, GoalFiles, GoalSettings, GoalTools } from "./g
 import { searchWorkspace } from "./agentTools";
 import { checkPage } from "./pageCheck";
 import SpacePanel from "./SpacePanel";
+import ConnectorPanel from "./ConnectorPanel";
+import { McpClient, toolSchema } from "./mcp";
+import type { McpTool } from "./mcp";
 import { EMPTY_SPACES, spaceContext } from "./spaces";
 import type { SpacesState } from "./spaces";
 import { REVIEW_INSTRUCTION, REVIEW_SCHEMA, reviewPullRequest } from "./prReview";
@@ -288,6 +291,9 @@ function App() {
   const [request, setRequest] = useState("");
   const [pinned, setPinned] = useState("");
   const [spaces, setSpaces] = useState<SpacesState>(EMPTY_SPACES);
+  // Memory only on purpose: the URL may embed a secret and the token must never be saved.
+  const [connector, setConnector] = useState<{ client: McpClient; server: string; tools: McpTool[] } | null>(null);
+  const approvedTools = useRef(new Set<string>());
   const spaceInfo = spaceContext(spaces);
   const effectivePinned = [pinned, spaceInfo.requirements].filter(Boolean).join("\n\n");
   const [notes, setNotes] = useState("");
@@ -999,7 +1005,42 @@ function App() {
     setTranscript((previous) => [...previous, { id, request: `[Agent ${label}]`, response, file, status: "Done" }]);
   }
 
+  async function connectMcp(url: string, tokenValue: string) {
+    setNetworkBusy(true);
+    try {
+      const client = new McpClient(url, tokenValue);
+      const { server, tools } = await client.connect(AbortSignal.timeout(60000));
+      approvedTools.current.clear();
+      setConnector({ client, server, tools });
+      return tools.length ? "" : "Connected, but the server lists no usable tools.";
+    } catch (failure) {
+      return failureMessage(failure, "Could not connect to the MCP server.");
+    } finally {
+      setNetworkBusy(false);
+    }
+  }
+
   const agentTools: GoalTools = {
+    external: connector ? {
+      catalog: connector.tools.map((tool) => ({ name: tool.name, description: tool.description, schema: toolSchema(tool) })),
+      async call(name, args, signal) {
+        const tool = connector.tools.find((candidate) => candidate.name === name);
+        if (!tool) throw new Error(`Unknown tool "${name}".`);
+        if (!approvedTools.current.has(name)) {
+          const approved = window.confirm(
+            `Allow the agent to use the "${name}" tool on ${connector.client.url.host}?\n\nArguments: ${JSON.stringify(args).slice(0, 400)}\n\nThe server receives these arguments and may act on them. OK also allows later calls to this tool during this agent run.`,
+          );
+          if (!approved) {
+            logAgent("Tool", `You declined ${name}.`);
+            return "The user declined this tool call. Do not retry it; choose a different step.";
+          }
+          approvedTools.current.add(name);
+        }
+        const result = await connector.client.callTool(tool, args, signal);
+        logAgent("Tool", `${name} ${JSON.stringify(args).slice(0, 200)}\n${result.slice(0, 400)}`);
+        return result;
+      },
+    } : undefined,
     async search(query) {
       const { files: current, paths } = goalWorkspace.current;
       let report = searchWorkspace(current, paths, query);
@@ -2023,6 +2064,7 @@ function App() {
             hint={() => spaceInfo.hint}
             ask={askGoal} apply={applyGoal} running={(running) => {
               setGoalRunning(running);
+              if (!running) approvedTools.current.clear();
               if (running) setError("");
               setNotice(running
                 ? "Goal mode is applying reviewed edits locally. Use its steering, Pause, or Stop controls."
@@ -2034,6 +2076,18 @@ function App() {
               {spaces.active && <span className="status-dot online" />}
             </summary>
             <SpacePanel state={spaces} change={setSpaces} openPaths={Object.keys(files)} disabled={busy} />
+          </details>
+          <details className="pinned">
+            <summary>
+              Connectors (MCP)
+              {connector && <span className="status-dot online" />}
+            </summary>
+            <ConnectorPanel
+              connected={connector && { server: connector.server, host: connector.client.url.host, tools: connector.tools }}
+              connect={connectMcp}
+              disconnect={() => { approvedTools.current.clear(); setConnector(null); }}
+              disabled={busy}
+            />
           </details>
           <details className="pinned">
             <summary>Project notes (saved, editable)</summary>
