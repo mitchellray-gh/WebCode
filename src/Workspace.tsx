@@ -45,7 +45,12 @@ import {
 } from "./context";
 import type { Memory } from "./context";
 import { BrowserModel } from "./model";
-import { DEFAULT_MODEL_ID, MODEL_CHOICES, modelChoice } from "./models";
+import {
+  DEFAULT_MODEL_ID,
+  MOBILE_MODEL_ID,
+  MODEL_CHOICES,
+  modelChoice,
+} from "./models";
 import SkillStore from "./SkillStore";
 import { BUILTIN_SKILLS } from "./skillCatalog";
 import {
@@ -241,7 +246,11 @@ function App() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [ready, setReady] = useState(false);
   const [selectedModelId, setSelectedModelId] =
-    useState<string>(DEFAULT_MODEL_ID);
+    useState<string>(() =>
+      window.matchMedia(MOBILE_QUERY).matches
+        ? MOBILE_MODEL_ID
+        : DEFAULT_MODEL_ID,
+    );
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [skillLibrary, setSkillLibrary] = useState(restoreSkillLibrary);
   const [progress, setProgress] = useState({ value: 0, text: "" });
@@ -730,10 +739,17 @@ function App() {
       setLiveBytes(prepared.inputBytes);
       setPhase("thinking");
       updateTurn({ status: "Generating" });
+      let lastStreamUpdate = 0;
       const answer = await instance.complete(
         prepared.messages,
         abort.signal,
-        (text) => updateTurn({ response: text }),
+        (text) => {
+          const now = Date.now();
+          if (now - lastStreamUpdate >= 100) {
+            lastStreamUpdate = now;
+            updateTurn({ response: text });
+          }
+        },
       );
       if (!answer.text.trim())
         throw new Error(
@@ -1446,7 +1462,13 @@ function App() {
               </div>
             </div>
           )}
-          {transcript.map((turn) => (
+          {mobile && transcript.length > 6 && (
+            <p className="muted">
+              Showing the latest 6 exchanges. Export to keep the full
+              conversation.
+            </p>
+          )}
+          {(mobile ? transcript.slice(-6) : transcript).map((turn) => (
             <article className="exchange" key={turn.id}>
               <div className="chat-person">
                 YOU <span>{turn.file.split("/").at(-1)}</span>

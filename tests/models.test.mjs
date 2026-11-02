@@ -4,6 +4,7 @@ import { prebuiltAppConfig } from "@mlc-ai/web-llm";
 import {
   MODEL_CHOICES,
   DEFAULT_MODEL_ID,
+  MOBILE_MODEL_ID,
   modelChoice,
   modelSource,
 } from "../src/models.ts";
@@ -23,6 +24,7 @@ test("every selectable model exists in the installed WebLLM catalog and uses Mod
     assert.equal(modelChoice(model.id), model);
   }
   assert.equal(modelChoice(DEFAULT_MODEL_ID).name, "Llama 3.2 1B");
+  assert.equal(modelChoice(MOBILE_MODEL_ID).memoryMB, 580);
   assert.throws(
     () => modelSource("https://huggingface.co/example"),
     /supported browser model/,

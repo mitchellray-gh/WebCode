@@ -82,6 +82,7 @@ export const MODEL_CHOICES = [
 ] as const;
 
 export const DEFAULT_MODEL_ID = MODEL_CHOICES[0].id;
+export const MOBILE_MODEL_ID = "SmolLM2-360M-Instruct-q4f32_1-MLC";
 
 export function modelChoice(id: string) {
   const choice = MODEL_CHOICES.find((model) => model.id === id);
