@@ -714,6 +714,9 @@ summary {
   padding: 20px 19px;
   scroll-behavior: smooth;
 }
+.workspace-download {
+  padding: 0 12px 12px;
+}
 .chat-empty {
   display: flex;
   align-items: center;

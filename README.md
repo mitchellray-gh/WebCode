@@ -37,6 +37,16 @@ Compaction extends session continuity, not the physical context window or reason
 
 ## GitHub and Editing
 
+### Create without GitHub
+
+No repository or GitHub token is required. Start in the scratch workspace, use **New file** in Explorer (or `/new src/app.ts [description]`), and type directly in the editor. For AI-written content, load a model, choose **Edit**, then review and apply the proposed code.
+
+Choose **Download workspace ZIP** in Explorer (the **Files** tab on mobile) to save all open and newly created files to your phone or computer, with their folder paths and current edits preserved. Unapplied proposals, conversation history, and credentials are not included. With a repository connected, unopened remote files are not included. Extract the ZIP before uploading the files to GitHub later; uploading the ZIP alone does not populate a repository's source files.
+
+The browser controls where downloads are saved. Download before closing or reloading: workspace files remain session-only.
+
+### Connect and publish
+
 1. Open a public repository with `owner/repo` (no token needed), or enter a fine-grained GitHub token for private repos and publishing. The dialog links to GitHub's token page pre-filled with a name, 30-day expiry and Contents write; there is no "Sign in with GitHub" button because GitHub's OAuth endpoints block browser requests (CORS) and need a server-side secret. Tokens are held only in page memory, never localStorage, the transcript, or model context. Use minimum permissions: Contents read for browsing; Contents write for publishing. Workflow files may require additional GitHub permissions. If the repository is empty (no commits), the app offers to create a short `README.md` as its first commit, after confirmation and only with a Contents write token.
 2. Select a UTF-8 file and edit locally, or select a small section and use Explain / Edit. AI proposals must contain a complete fenced code block and finish normally. Review the diff, then apply locally. An intervening edit prevents a stale proposal from overwriting the file.
 3. Review local changes, then explicitly publish **all changed files** to a new branch, either with the Publish branch button or by typing `/publish [branch] [message]` (or "publish my changes to GitHub") in the assistant. The model never publishes; the app does, after a confirmation that lists the branch and files. Publishing never updates an existing branch. It checks the source head, creates blobs/tree/commit, and creates the branch ref last. The compare link opens GitHub's pull-request flow. Source branches may advance after the head check; the new branch still starts from the loaded snapshot and never overwrites remote work.

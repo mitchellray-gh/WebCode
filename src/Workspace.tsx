@@ -75,6 +75,7 @@ import {
   resolvePath,
 } from "./commands";
 import type { Command } from "./commands";
+import { workspaceArchive } from "./archive";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
 const isChanged = (file: OpenFile) =>
@@ -139,8 +140,10 @@ function useMobile() {
   return mobile;
 }
 
-function download(name: string, content: string, type = "text/plain") {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+function download(name: string, content: string | Blob, type = "text/plain") {
+  const url = URL.createObjectURL(
+    content instanceof Blob ? content : new Blob([content], { type }),
+  );
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;
@@ -527,6 +530,18 @@ function App() {
     setNewPath(folder);
     setNewPathError("");
     setCreating(true);
+  }
+
+  function downloadWorkspace() {
+    setError("");
+    try {
+      download(`${repo?.name || "scratch-workspace"}.zip`, workspaceArchive(files));
+      setNotice(
+        "ZIP download started with all open and newly created files. Unapplied AI proposals are not included.",
+      );
+    } catch (failure) {
+      setError(failureMessage(failure, "Could not create workspace ZIP."));
+    }
   }
 
   // Returns an error message, or "" after the file was created.
@@ -1080,6 +1095,17 @@ function App() {
           <ChevronRight size={14} />
           <span>{repo?.name || "scratch"}</span>
         </div>
+        <div className="workspace-download">
+          <button
+            className="button full"
+            disabled={busy || !Object.keys(files).length}
+            onClick={downloadWorkspace}
+            title="Download all open and newly created files, preserving folders"
+          >
+            <Download size={14} />
+            Download workspace ZIP
+          </button>
+        </div>
         <div className="file-list">
           {visiblePaths.map((path) => (
             <button
@@ -1101,6 +1127,12 @@ function App() {
           )}
         </div>
         <div className="explorer-bottom">
+          {!repo && (
+            <p className="muted">
+              No repository needed. Create files, edit or apply AI proposals,
+              then download your workspace.
+            </p>
+          )}
           <span className="eyebrow">SOURCE</span>
           <div>
             <GitBranch size={14} />

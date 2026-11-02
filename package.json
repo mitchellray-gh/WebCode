@@ -20,6 +20,7 @@
     "@codemirror/merge": "^6.12.3",
     "@mlc-ai/web-llm": "^0.2.86",
     "@uiw/react-codemirror": "^4.25.12",
+    "fflate": "^0.8.2",
     "lucide-react": "^1.63.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
