@@ -39,6 +39,7 @@ import {
   bytes,
   compactMemory,
   codingInstruction,
+  extractiveSummarize,
   emptyMemory,
   INPUT_BYTE_BUDGET,
   preparePrompt,
@@ -394,8 +395,7 @@ function App() {
     setActive(saved.active);
     setTranscript(saved.transcript.map((turn) => ({
       ...turn,
-      status: ["Preparing context", "Generating"].includes(turn.status) || turn.status.startsWith("Compacting history")
-        ? "Interrupted" : turn.status,
+      status: ["Preparing context", "Generating"].includes(turn.status) ? "Interrupted" : turn.status,
     })));
     remember(saved.memory);
     setPinned(saved.pinned);
@@ -821,17 +821,13 @@ function App() {
     setPhase("compacting");
     try {
       const prepared = await preparePrompt(prompt, contextMemory,
-        measureSummarizer(instance.summarizer(signal), measurement, (stats) => {
-          setStats(stats);
-          update({ status: `Compacting history · summary ${stats.calls}`, response:
-            `Summarizing older conversation locally before ${call.stage.toLowerCase()}. ${Math.round(stats.milliseconds / 1000)}s of summarization so far. Stop now cancels without applying this step.` });
-        }));
+        measureSummarizer(extractiveSummarize, measurement));
       signal.throwIfAborted();
       if (!reviewing) remember(prepared.memory);
       measurement.afterBytes = prepared.inputBytes;
       setLiveBytes(prepared.inputBytes);
       setPhase("thinking");
-      update({ status: "Generating", response: "" });
+      update({ status: "Generating" });
       let lastUpdate = 0;
       const answer = await instance.completeTask(prepared.messages, signal, (text) => {
         const now = Date.now();
@@ -925,18 +921,14 @@ function App() {
       const prepared = await preparePrompt(
         promptInput,
         memoryRef.current,
-        measureSummarizer(instance.summarizer(abort.signal), measurement, (stats) => {
-          setStats(stats);
-          updateTurn({ status: `Compacting history · summary ${stats.calls}`, response:
-            `Summarizing older conversation locally before answering. ${Math.round(stats.milliseconds / 1000)}s of summarization so far. Stop generation cancels; your files and original history are retained.` });
-        }),
+        measureSummarizer(extractiveSummarize, measurement),
       );
       measurement.afterBytes = prepared.inputBytes;
       abort.signal.throwIfAborted();
       remember(prepared.memory);
       setLiveBytes(prepared.inputBytes);
       setPhase("thinking");
-      updateTurn({ status: "Generating", response: "" });
+      updateTurn({ status: "Generating" });
       let lastStreamUpdate = 0;
       const answer = await instance.completeTask(
         prepared.messages,
@@ -1006,10 +998,7 @@ function App() {
   }
 
   async function compactNow() {
-    if (!ready || busy || !model.current) return;
-    const abort = new AbortController();
-    controller.current = abort;
-    setPhase("compacting");
+    if (busy) return;
     setError("");
     const measurement = emptyCompactionStats();
     measurement.beforeBytes = historyBytes(memoryRef.current);
@@ -1017,19 +1006,15 @@ function App() {
     try {
       const compacted = await compactMemory(
         memoryRef.current,
-        measureSummarizer(model.current.summarizer(abort.signal), measurement),
+        measureSummarizer(extractiveSummarize, measurement),
         0,
       );
-      abort.signal.throwIfAborted();
       remember(compacted);
       measurement.afterBytes = historyBytes(compacted);
     } catch (failure) {
-      if (!abort.signal.aborted)
-        setError(failureMessage(failure, "Compaction failed."));
+      setError(failureMessage(failure, "Compaction failed."));
     } finally {
       setStats({ ...measurement });
-      setPhase("idle");
-      controller.current = null;
     }
   }
 
@@ -1454,7 +1439,7 @@ function App() {
                 className="icon-button"
                 title="Compact all completed turns now"
                 aria-label="Compact all completed turns now"
-                disabled={!ready || busy || !memory.recent.length}
+                disabled={busy || !memory.recent.length}
                 onClick={compactNow}
               >
                 <Layers size={15} />
@@ -1481,7 +1466,7 @@ function App() {
           {panel === "memory" ? (
             <div className="memory-panel">
               <p className="compaction-stats" aria-label="Last compaction statistics">
-                Last preparation: {stats.calls} summary calls · {(stats.milliseconds / 1000).toFixed(1)} s summarizing · {stats.beforeBytes.toLocaleString()} → {stats.afterBytes.toLocaleString()} B.
+                Last preparation: {stats.calls} local compaction steps (no model calls) · {stats.milliseconds.toFixed(0)} ms · {stats.beforeBytes.toLocaleString()} → {stats.afterBytes.toLocaleString()} B.
                 {" "}Manual compaction measures history bytes; request preparation measures the assembled prompt.
               </p>
               <div className="memory-stats">

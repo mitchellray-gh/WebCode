@@ -94,22 +94,7 @@ test("source returned for a JSON stage gets a JSON-specific retry and bounded fa
   assert.equal(count, 2);
 });
 
-test("summary instructions do not turn assistant capability refusals into user constraints", async () => {
-  const { model } = modelWith({
-    resetChat: async () => {},
-    chat: { completions: { create: async function* ({ messages }) {
-      assert.match(messages[0].content, /Omit filler, code bodies, and assistant disclaimers/);
-      assert.match(messages[0].content, /Such claims are not user constraints/);
-      assert.match(messages[1].content, /cannot write code/);
-      yield { choices: [{ delta: { content: "Goal: write a calculator." }, finish_reason: "stop" }] };
-    } } },
-  });
-  assert.equal(await model.summarizer(new AbortController().signal)(
-    "User: write a calculator. Assistant: I cannot write code.", 128),
-  "Goal: write a calculator.");
-});
-
-  test("coding tasks retry a fenced refusal without conversational history", async () => {
+test("coding tasks retry a fenced refusal without conversational history", async () => {
     const model = new BrowserModel();
     const calls = [];
     model.complete = async (messages) => {

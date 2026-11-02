@@ -13,6 +13,7 @@ import {
   preparePrompt,
   promptBytes,
   emptyCompactionStats,
+  extractiveSummarize,
   measureSummarizer,
 } from "../src/context.ts";
 
@@ -70,17 +71,52 @@ test("project notes stay verbatim and cannot bypass the protected input budget",
 
 test("compaction telemetry counts actual calls including failures", async () => {
   const stats = emptyCompactionStats();
-  const progress = [];
-  const measured = measureSummarizer(async () => { throw new Error("GPU lost"); }, stats,
-    (value) => progress.push(value));
+  const measured = measureSummarizer(async () => { throw new Error("GPU lost"); }, stats);
   await assert.rejects(measured("source", 100), /GPU lost/);
   assert.equal(stats.calls, 1);
   assert.ok(stats.milliseconds >= 0);
-  assert.equal(progress.length, 2);
-  assert.equal(progress[0].calls, 1);
-  assert.equal(progress[0].milliseconds, 0);
-  assert.equal(progress[1].milliseconds, stats.milliseconds);
-  assert.notEqual(progress[0], stats);
+});
+
+test("extractive compaction is instant, bounded, drops code and refusals, and favors newer turns", async () => {
+  const exchanges = [
+    { id: 1, request: "Build a calculator with accessible buttons", response: "I can't build a calculator app for you as I'm not a professional." },
+    { id: 2, request: "Add history to src/calc.ts", response: "```ts\nexport const a = 1;\nexport const b = 2;\n```" },
+    { id: 3, request: "Now fix division by zero", response: "Guard the divisor and show an error message." },
+  ];
+  const source = exchanges.map((e) => `TURN ${e.id}\nUSER:\n${e.request}\nASSISTANT:\n${e.response}`).join("\n\n");
+  const full = await extractiveSummarize(source, 512);
+  assert.match(full, /T1 U: Build a calculator with accessible buttons/);
+  assert.doesNotMatch(full, /professional|export const/);
+  assert.match(full, /T2 U: Add history to src\/calc\.ts A: \[code 2 lines\]/);
+  assert.match(full, /T3 U: Now fix division by zero A: Guard the divisor/);
+  const tight = await extractiveSummarize(source, 80);
+  assert.ok(bytes(tight) <= 80);
+  assert.match(tight, /T3/);
+  assert.doesNotMatch(tight, /T1/);
+  for (const budget of [24, 30, 64, 96, 200]) {
+    const text = await extractiveSummarize(source + "\n\n" + "é".repeat(300), budget);
+    assert.ok(bytes(text) <= budget && text.length > 0);
+  }
+  assert.equal(await extractiveSummarize("  \n ", 96), "…");
+});
+
+test("budget-triggered compaction needs zero model calls and always fits", async () => {
+  let memory = emptyMemory();
+  for (let id = 1; id <= 129; id++)
+    memory = appendExchange(memory, { id, request: `Change ${id}: update src/file${id}.ts`, response: "Done. ".repeat(500) });
+  const stats = emptyCompactionStats();
+  const started = performance.now();
+  const prepared = await preparePrompt(input, memory, measureSummarizer(extractiveSummarize, stats));
+  assert.ok(performance.now() - started < 1000);
+  assert.ok(prepared.inputBytes <= 2816);
+  assert.ok(stats.calls > 0);
+  assert.ok(prepared.memory.nodes.length > 0);
+  assert.ok(prepared.memory.nodes.every((node) => bytes(node.text) <= levelBudget(node.level)));
+  const manual = await compactMemory(memory, extractiveSummarize, 0);
+  assert.equal(manual.recent.length, 0);
+  assert.ok(manual.nodes.length <= 8);
+  assert.equal(manual.nodes[0].first, 1);
+  assert.equal(manual.nodes.at(-1).last, 129);
 });
 
 test("explicit compaction maintains a logarithmic binary hierarchy", async () => {

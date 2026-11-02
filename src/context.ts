@@ -20,20 +20,12 @@ export type CompactionStats = {
 export const emptyCompactionStats = (): CompactionStats => ({
   calls: 0, milliseconds: 0, beforeBytes: 0, afterBytes: 0,
 });
-export function measureSummarizer(
-  summarize: Summarize,
-  stats: CompactionStats,
-  progress?: (stats: CompactionStats) => void,
-): Summarize {
+export function measureSummarizer(summarize: Summarize, stats: CompactionStats): Summarize {
   return async (source, budget) => {
     stats.calls++;
-    progress?.({ ...stats });
     const start = performance.now();
     try { return await summarize(source, budget); }
-    finally {
-      stats.milliseconds += performance.now() - start;
-      progress?.({ ...stats });
-    }
+    finally { stats.milliseconds += performance.now() - start; }
   };
 }
 export const memoryBytes = (memory: Memory) =>
@@ -117,6 +109,77 @@ async function condense(
     "Memory compaction reached its safety limit. Original conversation is retained.",
   );
 }
+
+type Digest = { head: string; request: string; response: string };
+
+const fit = (text: string, limit: number) =>
+  bytes(text) <= limit ? text : limit < 4 ? "" : `${chunks(text, limit - 3)[0].trimEnd()}…`;
+// Code bodies are dropped: the current file is always supplied verbatim.
+const plain = (text: string) => text
+  .replace(/```[^\n]*\n([\s\S]*?)(?:```|$)/g, (_match, code: string) => ` [code ${code.trim().split("\n").length} lines] `)
+  .replace(/\s+/g, " ").trim();
+const natural = (entry: Digest) =>
+  `${entry.head}${entry.request}${entry.response ? ` A: ${entry.response}` : ""}`;
+
+function digest(source: string): Digest[] {
+  return source.split(/\n\n(?=TURN \d+\nUSER:\n)/).flatMap((block) => {
+    const turn = /^TURN (\d+)\nUSER:\n([\s\S]*?)\nASSISTANT:\n([\s\S]*)$/.exec(block);
+    if (turn)
+      return [{
+        head: `T${turn[1]} U: `,
+        request: fit(plain(turn[2]), 200),
+        response: isCapabilityRefusal(turn[3]) ? "" : fit(plain(turn[3]), 120),
+      }];
+    return block.split("\n")
+      .filter((line) => line.trim() && !/^(?:(?:Older|Newer) record \(|TURN \d+$|USER:$|ASSISTANT:$)/.test(line))
+      .map((line) => ({ head: "", request: plain(line), response: "" }));
+  });
+}
+
+// Water-filling: short entries keep their full size; newer entries get proportionally more of the rest.
+function allocate(sizes: number[], total: number): number[] {
+  const shares = sizes.map(() => 0);
+  let open = sizes.map((_, index) => index);
+  let remaining = total;
+  while (open.length) {
+    const weight = open.reduce((sum, index) => sum + index + 1, 0);
+    const small = open.filter((index) => sizes[index] <= (remaining * (index + 1)) / weight);
+    if (!small.length) {
+      for (const index of open) shares[index] = Math.floor((remaining * (index + 1)) / weight);
+      break;
+    }
+    for (const index of small) {
+      shares[index] = sizes[index];
+      remaining -= sizes[index];
+    }
+    open = open.filter((index) => !small.includes(index));
+  }
+  return shares;
+}
+
+function render(entry: Digest, share: number) {
+  const full = natural(entry);
+  if (bytes(full) <= share) return full;
+  const room = share - bytes(entry.head) - 4;
+  if (!entry.response || room < 12) return fit(full, share);
+  const request = fit(entry.request, Math.ceil(room * 0.6));
+  const left = room - bytes(request);
+  return `${entry.head}${request}${left >= 8 ? ` A: ${fit(entry.response, left)}` : ""}`;
+}
+
+/** Instant, deterministic, inference-free compaction. Verbatim request/answer fragments cannot be hallucinated. */
+export const extractiveSummarize: Summarize = async (source, budget) => {
+  let kept = digest(source);
+  if (!kept.length) return "…";
+  let shares: number[] = [];
+  for (;;) {
+    const sizes = kept.map((entry) => bytes(natural(entry)));
+    shares = allocate(sizes, budget - (kept.length - 1));
+    if (kept.length === 1 || shares[0] >= Math.min(24, sizes[0])) break;
+    kept = kept.slice(1);
+  }
+  return fit(kept.map((entry, index) => render(entry, shares[index])).join("\n"), budget);
+};
 
 async function merge(
   left: MemoryNode,
