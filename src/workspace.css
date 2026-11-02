@@ -392,8 +392,19 @@ summary {
   border-top-color: var(--accent);
   color: #344e3f;
 }
-.editor-tabs > .icon-button {
-  margin: 0 6px;
+.editor-tabs > .tab-actions {
+  position: sticky;
+  right: 0;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 2px;
+  background: #f3f5f3;
+  box-shadow: -8px 0 8px -8px #0003;
+}
+.tab-actions .icon-button {
+  margin: 0 4px;
 }
 .tab-spacer {
   flex: 1;

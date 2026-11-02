@@ -670,6 +670,14 @@ function App() {
     return "";
   }
 
+  function launchPreview() {
+    const entry = defaultEntry(Object.keys(files), active);
+    if (entry) return setPreviewEntry(entry);
+    setNotice(
+      "Nothing to preview yet: Play runs web pages (HTML, CSS, JavaScript). Create one with /new index.html, write it with Edit, then press Play.",
+    );
+  }
+
   // Commands run in the app, not the model, so GitHub access is real rather than described.
   async function runCommand(command: Command, text: string) {
     if (busy) return;
@@ -1382,26 +1390,27 @@ function App() {
             </button>
           ))}
           <div className="tab-spacer" />
-          <button
-            className="icon-button"
-            title="Preview app (HTML, CSS, JavaScript)"
-            aria-label="Preview app"
-            disabled={!defaultEntry(Object.keys(files), active)}
-            onClick={() => setPreviewEntry(defaultEntry(Object.keys(files), active))}
-          >
-            <Play size={16} />
-          </button>
-          <button
-            className="icon-button"
-            title="Download current file"
-            aria-label="Download current file"
-            disabled={!activeFile}
-            onClick={() =>
-              download(active.split("/").at(-1)!, activeFile.content)
-            }
-          >
-            <ArrowDownToLine size={16} />
-          </button>
+          <div className="tab-actions">
+            <button
+              className="icon-button"
+              title="Preview app (HTML, CSS, JavaScript)"
+              aria-label="Preview app"
+              onClick={launchPreview}
+            >
+              <Play size={16} />
+            </button>
+            <button
+              className="icon-button"
+              title="Download current file"
+              aria-label="Download current file"
+              disabled={!activeFile}
+              onClick={() =>
+                download(active.split("/").at(-1)!, activeFile.content)
+              }
+            >
+              <ArrowDownToLine size={16} />
+            </button>
+          </div>
         </div>
         <div className="breadcrumb">
           <span>{repo?.name || "scratch"}</span>
