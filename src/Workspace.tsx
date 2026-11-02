@@ -93,6 +93,7 @@ import { applyGoalEdit } from "./goalLoop";
 import type { GoalCall, GoalEdit, GoalFiles, GoalSettings, GoalTools } from "./goalLoop";
 import { searchWorkspace } from "./agentTools";
 import { checkPage } from "./pageCheck";
+import { REVIEW_INSTRUCTION, REVIEW_SCHEMA, reviewPullRequest } from "./prReview";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
 const isChanged = (file: OpenFile) =>
@@ -279,6 +280,8 @@ function App() {
   const [commitMessage, setCommitMessage] = useState("");
   const [publishedUrl, setPublishedUrl] = useState("");
   const [publishedBranch, setPublishedBranch] = useState<{ head: string; base: string; title: string; files: string[] } | null>(null);
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [pendingReview, setPendingReview] = useState<{ number: number; markdown: string } | null>(null);
   const [request, setRequest] = useState("");
   const [pinned, setPinned] = useState("");
   const [notes, setNotes] = useState("");
@@ -834,6 +837,43 @@ function App() {
       }
     }
     if (command.type === "pr") return reply(await openPullRequest(command.title));
+    if (command.type === "review") {
+      if (!repo) return reply("No repository is connected. Use /open owner/repo first.");
+      if (!ready || !model.current)
+        return reply("Load a browser model first. The review runs locally on your device, in chunks.");
+      const abort = new AbortController();
+      controller.current = abort;
+      setNetworkBusy(true);
+      setPendingReview(null);
+      try {
+        const pull = await new GitHub(token).readPullRequest(repo, command.number);
+        if (!pull.files.length)
+          return reply(`Pull request #${pull.number} has no reviewable text changes (${pull.omitted} binary or large file(s) skipped).`);
+        const result = await reviewPullRequest({
+          pr: pull,
+          signal: abort.signal,
+          model: selectedModel.name,
+          progress: (done, total, label) =>
+            setReviewStatus(done < total ? `Reviewing PR #${pull.number}: chunk ${done + 1}/${total} (${label})` : ""),
+          ask: (requestText, diff) =>
+            askGoal({ stage: "PR review", instruction: REVIEW_INSTRUCTION, request: requestText, fileContext: diff, schema: REVIEW_SCHEMA }, abort.signal),
+        });
+        setPendingReview({ number: pull.number, markdown: result.markdown });
+        return reply(
+          `Reviewed PR #${pull.number}: ${result.findings} finding(s) in ${result.reviewed} of ${result.total} chunk(s). Nothing was posted. Use "Post review comment" below to send it to GitHub (you confirm first), or discard it.\n\n${result.markdown}`,
+        );
+      } catch (failure) {
+        return reply(
+          abort.signal.aborted
+            ? "Review stopped. Nothing was posted. Reload the model before continuing."
+            : failureMessage(failure, "Could not review the pull request."),
+        );
+      } finally {
+        setReviewStatus("");
+        setNetworkBusy(false);
+        controller.current = null;
+      }
+    }
     if (command.type === "publish") {
       if (!repo)
         return reply(
@@ -910,7 +950,7 @@ function App() {
       instruction: call.instruction, request: task, fileContext: call.fileContext,
       pinned, notes, skills: skillText,
     };
-    const reviewing = call.stage === "Review" || call.stage === "Completion review";
+    const reviewing = call.stage === "Review" || call.stage === "Completion review" || call.stage === "PR review";
     const contextMemory = reviewing ? emptyMemory() : memoryRef.current;
     measurement.beforeBytes = promptBytes(assemblePrompt(prompt, contextMemory));
     measurement.afterBytes = measurement.beforeBytes;
@@ -934,7 +974,7 @@ function App() {
       update({ response: answer.text, status: answer.finished ? "Complete" : "Output limit reached" });
       if (!answer.finished || !answer.text.trim())
         throw new Error("Goal mode needs a complete, nonempty answer. No draft was applied; narrow the goal or file size and retry.");
-      remember(appendExchange(memoryRef.current, { id, request: task, response: answer.text }));
+      if (!reviewing) remember(appendExchange(memoryRef.current, { id, request: task, response: answer.text }));
       return answer.text;
     } catch (failure) {
       update({ status: signal.aborted ? "Cancelled" : "Failed" });
@@ -1175,6 +1215,27 @@ function App() {
     setPanelOpen(true);
     setMobilePane("editor");
     setNotice("Applied locally. Nothing has been sent to GitHub.");
+  }
+
+  async function postReview() {
+    if (!repo || !pendingReview || busy) return;
+    if (!token) {
+      setError("Posting a comment needs a GitHub token with Pull requests write permission. Add one in the publish dialog.");
+      return;
+    }
+    if (!window.confirm(`Post this automated review as a public comment on ${repo.owner}/${repo.name} pull request #${pendingReview.number}?\n\n${pendingReview.markdown.slice(0, 800)}`))
+      return;
+    setNetworkBusy(true);
+    setError("");
+    try {
+      const url = await new GitHub(token).commentOnPullRequest(repo, pendingReview.number, pendingReview.markdown);
+      setPendingReview(null);
+      setNotice(url ? `Posted the review comment: ${url}` : "Posted the review comment.");
+    } catch (failure) {
+      setError(failureMessage(failure, "Could not post the review comment."));
+    } finally {
+      setNetworkBusy(false);
+    }
   }
 
   async function openPullRequest(title: string) {
@@ -1906,6 +1967,23 @@ function App() {
           ))}
           <div ref={endOfChat} />
         </div>
+        {reviewStatus && (
+          <div className="proposal-banner" role="status">
+            <div><span>{reviewStatus}</span></div>
+            <button className="button full" onClick={() => controller.current?.abort()}>Stop review</button>
+          </div>
+        )}
+        {pendingReview && !reviewStatus && (
+          <div className="proposal-banner">
+            <div>
+              <span>Review of PR #{pendingReview.number} is ready (not posted)</span>
+              <button className="icon-button" title="Discard review" aria-label="Discard review" onClick={() => setPendingReview(null)}>
+                <X size={14} />
+              </button>
+            </div>
+            <button className="button primary full" disabled={busy} onClick={postReview}>Post review comment</button>
+          </div>
+        )}
         {proposal && (
           <div className="proposal-banner">
             <div>

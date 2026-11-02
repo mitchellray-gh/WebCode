@@ -1,6 +1,8 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+export const byteLength = (text: string) => encoder.encode(text).length;
+
 /** Cuts to a UTF-8 byte budget without leaving a broken character. */
 export function clip(text: string, limit: number) {
   const data = encoder.encode(text);

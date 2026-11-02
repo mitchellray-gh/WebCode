@@ -6,7 +6,7 @@ import { clip } from "./agentTools.ts";
 export type GoalSettings = { goal: string; steering: string };
 export type GoalInput = GoalSettings & { revision: number };
 export type GoalFiles = Record<string, { content: string; original: string; isNew?: boolean }>;
-export type GoalStage = "Plan" | "Draft" | "Review" | "Revise" | "Inspect" | "Apply" | "Completion review" | "Search" | "Read" | "Check";
+export type GoalStage = "Plan" | "Draft" | "Review" | "Revise" | "Inspect" | "Apply" | "Completion review" | "Search" | "Read" | "Check" | "PR review";
 export type GoalCall = { stage: GoalStage; instruction: string; request: string; fileContext: string; schema?: string };
 export type GoalEdit = { path: string; base: string | null; next: string };
 export type GoalTools = {

@@ -193,3 +193,14 @@ test("issue and pull request commands are explicit, and questions about them rea
   for (const text of ["how do I open a pull request?", "explain what a pull request is", "review the pull request changes"])
     assert.equal(parseCommand(text), null, text);
 });
+
+test("pull request review is an explicit command; questions about reviewing reach the model", () => {
+  assert.deepEqual(parseCommand("/review 12"), { type: "review", number: 12 });
+  assert.deepEqual(parseCommand("/review PR #12"), { type: "review", number: 12 });
+  assert.deepEqual(parseCommand("/review"), { type: "help" });
+  assert.deepEqual(parseCommand("/review the code"), { type: "help" });
+  for (const text of ["review pr 5", "Please review pull request #5"])
+    assert.deepEqual(parseCommand(text), { type: "review", number: 5 }, text);
+  for (const text of ["how should I review a pull request?", "review the pull request changes", "review my code"])
+    assert.equal(parseCommand(text), null, text);
+});

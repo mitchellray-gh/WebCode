@@ -14,6 +14,11 @@ export type Repository = {
 };
 type Fetcher = typeof fetch;
 export type Issue = { number: number; title: string; body: string; comments: string[]; url: string };
+export type PullRequest = {
+  number: number; title: string; body: string; base: string; head: string;
+  files: { path: string; status: string; patch: string }[];
+  omitted: number;
+};
 
 export function parseRepository(value: string) {
   let slug = value.trim().replace(/\/$/, "");
@@ -225,6 +230,39 @@ export class GitHub {
       comments: Array.isArray(comments) ? comments.map((comment: { body?: unknown }) => String(comment.body ?? "").slice(0, 600)) : [],
       url: String(issue.html_url ?? ""),
     };
+  }
+
+  async readPullRequest(repo: Pick<Repository, "owner" | "name">, number: number): Promise<PullRequest> {
+    if (!Number.isInteger(number) || number < 1 || number > 9_999_999) throw new Error("Enter a valid pull request number.");
+    const base = `${this.base(repo)}/pulls/${number}`;
+    const pr: { title?: unknown; body?: unknown; base?: { ref?: unknown }; head?: { ref?: unknown } } = await this.request(base);
+    const list: unknown = await this.request(`${base}/files?per_page=30`);
+    if (!Array.isArray(list)) throw new Error("GitHub returned an unexpected file list.");
+    const files = list
+      .filter((file: { filename?: unknown; patch?: unknown }) => typeof file.filename === "string" && typeof file.patch === "string")
+      .map((file: { filename: string; status?: unknown; patch: string }) => ({
+        path: file.filename, status: String(file.status ?? "modified"), patch: file.patch.slice(0, 20000),
+      }));
+    return {
+      number,
+      title: String(pr.title ?? "").slice(0, 200),
+      body: String(pr.body ?? "").slice(0, 1500),
+      base: String(pr.base?.ref ?? ""),
+      head: String(pr.head?.ref ?? ""),
+      files,
+      omitted: list.length - files.length,
+    };
+  }
+
+  /** Posts a plain comment on a pull request. Always a deliberate user action. */
+  async commentOnPullRequest(repo: Pick<Repository, "owner" | "name">, number: number, body: string): Promise<string> {
+    if (!this.token) throw new Error("A GitHub token with Pull requests write permission is required to comment.");
+    if (!Number.isInteger(number) || number < 1 || number > 9_999_999) throw new Error("Enter a valid pull request number.");
+    if (!body.trim()) throw new Error("There is no review text to post.");
+    const created: { html_url?: unknown } = await this.request(`${this.base(repo)}/issues/${number}/comments`, "POST", {
+      body: body.slice(0, 20000),
+    });
+    return typeof created.html_url === "string" ? created.html_url : "";
   }
 
   /** Opens a pull request from an already-published branch. Needs a token with Pull requests write permission. */

@@ -14,7 +14,8 @@ export type Command =
   | { type: "publish"; branch: string; message: string }
   | { type: "issues" }
   | { type: "issue"; number: number }
-  | { type: "pr"; title: string };
+  | { type: "pr"; title: string }
+  | { type: "review"; number: number };
 
 export const HELP = [
   "The assistant model cannot reach GitHub itself; this app does it for you. Commands:",
@@ -26,6 +27,7 @@ export const HELP = [
   "/issues  list open issues in the connected repository (needs a token for private repositories)",
   "/issue N  load issue N as the Agent mode goal; turn on Agent mode and press Start",
   "/pr [title]  open a pull request from the branch you just published (needs a token with Pull requests write)",
+  "/review N  review pull request N locally in chunks; you confirm before anything is posted to GitHub",
   "/run [page.html]  preview and serve a web app (HTML/CSS/JavaScript) from your workspace in an isolated in-browser sandbox",
 ].join("\n");
 
@@ -55,6 +57,10 @@ export function parseCommand(text: string): Command | null {
       }
       case "pr":
         return { type: "pr", title: argument };
+      case "review": {
+        const number = /^(?:pr\s*)?#?(\d{1,7})$/i.exec(argument);
+        return number ? { type: "review", number: Number(number[1]) } : { type: "help" };
+      }
       case "run":
       case "preview":
       case "launch":
@@ -83,6 +89,8 @@ export function parseCommand(text: string): Command | null {
   if (/^(?:please\s+)?(?:run|launch|preview|serve|start)\s+(?:the\s+|my\s+|this\s+)?(?:web\s*)?(?:app(?:lication)?|site|page|website|preview)\b/i.test(trimmed))
     return { type: "run", path: "" };
   // Must start with the verb so questions like "how do I publish..." still reach the model.
+  const reviewing = /^(?:please\s+)?review\s+(?:pr|pull\s*request)\s*#?(\d{1,7})\b/i.exec(trimmed);
+  if (reviewing) return { type: "review", number: Number(reviewing[1]) };
   if (/^(?:please\s+)?(?:open|create|make)\s+(?:a\s+|the\s+)?pull\s*request\b/i.test(trimmed))
     return { type: "pr", title: "" };
   if (
