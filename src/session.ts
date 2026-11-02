@@ -1,6 +1,7 @@
 import { validateNewPath } from "./github.ts";
 import { modelChoice } from "./models.ts";
 import type { Memory } from "./context.ts";
+import type { GoalSettings } from "./goalLoop.ts";
 
 export type TranscriptTurn = {
   id: number;
@@ -28,6 +29,7 @@ export type Session = {
   mode: "explain" | "edit";
   model: string;
   proposal: Proposal | null;
+  goalLoop?: GoalSettings;
 };
 export const MAX_SESSION_BYTES = 3_000_000;
 
@@ -115,5 +117,11 @@ export function readSession(value: unknown): Session {
     version: 1, files, active, transcript, memory: { nodes, recent },
     pinned: text(data.pinned, 4000), notes: text(data.notes, 4000),
     request: text(data.request, 12000), mode: data.mode, model, proposal,
+    ...(data.goalLoop === undefined ? {} : {
+      goalLoop: {
+        goal: text(object(data.goalLoop).goal, 2000),
+        steering: text(object(data.goalLoop).steering, 1000),
+      },
+    }),
   };
 }

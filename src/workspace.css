@@ -842,6 +842,55 @@ summary {
   border-top: 1px solid #edf0ed;
   background: #fff;
 }
+.goal-panel {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.goal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  font-weight: 600;
+}
+.goal-controls {
+  max-height: 38dvh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.goal-controls p {
+  line-height: 1.5;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.goal-controls label {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.goal-controls textarea {
+  width: 100%;
+  min-height: 65px;
+  resize: vertical;
+  font-size: 16px;
+}
+.goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  position: sticky;
+  bottom: 0;
+  padding: 6px 0;
+  background: var(--bg);
+}
+.composer-area:has(.goal-controls) {
+  max-height: 65%;
+  overflow: auto;
+  flex-shrink: 0;
+}
 .pinned {
   margin-bottom: 12px;
 }

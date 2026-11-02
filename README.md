@@ -1,6 +1,6 @@
 # technicalskills
 
-A lightweight browser coding workspace using React, CodeMirror, GitHub REST API, and WebLLM. No hosted AI inference. Optional private Neon saves use a Vercel API function; inference stays in your browser. A review-first assistant, not an autonomous coding agent.
+A lightweight browser coding workspace using React, CodeMirror, GitHub REST API, and WebLLM. No hosted AI inference. Optional private Neon saves use a Vercel API function; inference stays in your browser. Manual review-first edits by default, with an opt-in goal-driven local coding loop.
 
 ## Run
 
@@ -73,6 +73,25 @@ The `/api/workspace` handler is a Vercel Node function; `npm run dev` alone serv
 
 Worker errors, worker message errors, and inference/runtime exceptions mark the model offline and preserve the workspace. A pending generation with no progress for 120 seconds fails explicitly rather than leaving Send permanently blocked. Choose **Load model** again (or a smaller model). Stopping generation terminates the worker to release resources, so cancellation also requires a reload. A completely killed Chrome tab cannot report an error; reopening uses the local recovery copy.
 
+### Goal-driven local coding loop
+
+Load a browser model, then enable **Goal-driven coding loop** in the assistant. Set a specific goal and choose **Start / resume**. Resolve or discard any pending manual proposal first. This is explicit permission to auto-apply **local** edits to all open files and create new files:
+
+1. **Plan / inspect:** choose one focused file/step, inspecting open files as needed.
+2. **Draft:** generate a complete replacement for one file.
+3. **Review / revise:** a separate model request reviews correctness, regressions, goal compliance, obvious unsafe behavior, and unnecessary complexity. Review prompts include the goal, steering, protected requirements/notes/skills, and original/proposed code, but omit conversational history to reduce anchoring and avoid needless history-compaction work. Findings trigger a corrected draft and another review, up to two revisions per change.
+4. **Apply:** only an explicit review pass allows the app to apply that candidate, with a stale-content/path-collision check. Then it plans the next step. A completion claim receives a separate model review before stopping, but is labeled **model-reported, not tested**.
+
+Use **Steer the next cycle → Send steering** while running to change direction. The latest steering replaces earlier steering and takes precedence over historical notes. An in-flight draft based on older steering is discarded before application. **Pause after cycle** finishes the current review/application cycle without unloading the model. **Stop now** cancels immediately and leaves unreviewed drafts unapplied; interrupting inference requires reloading the model.
+
+There is no fixed iteration count. The loop yields between cycles and continues while the page is open, until you pause/stop, it reports completion, or an error/no-progress condition occurs. It stops on malformed/truncated output, budget overflow, failed reviews, repeated inspections, recent code-state cycles, model failures, or approaching the 3 MB save limit. Keep backups. Phone heat, battery use, OS tab eviction, and browser throttling still apply; **it cannot run forever after the tab closes or crashes**.
+
+Every model stage is visible in the conversation as a brief plan, proposed code, or review result, not private internal reasoning. Goal/steering, conversation, and applied edits are saved through local recovery and connected Neon autosave. The toggle/run authorization is never saved; reload restores work but never restarts execution. Manual editing, chat submission, repository changes, and publishing are locked during the loop. Cloud autosave can continue while it runs.
+
+Only already-open files and newly created files are editable. Unopened remote files are not fetched automatically. The normal protected prompt budget still applies to every stage, including original plus proposed code during review: large files or goals stop explicitly instead of silently omitting code. Small focused files work best with the browser models and 768-token output limit.
+
+**Review is not cleansing or certification:** the same small model can miss its own bugs or be misled by source text. No generated code is executed, no compiler/tests/linter run inside the workspace, and nothing is automatically committed, published, or deployed. If working on this app's own source, edits affect the workspace copy, not the live running app; review, test externally, and publish explicitly.
+
 ### Connect and publish
 
 1. Open a public repository with `owner/repo` (no token needed), or enter a fine-grained GitHub token for private repos and publishing. The dialog links to GitHub's token page pre-filled with a name, 30-day expiry and Contents write; there is no "Sign in with GitHub" button because GitHub's OAuth endpoints block browser requests (CORS) and need a server-side secret. Tokens are held only in page memory, never localStorage, the transcript, or model context. Use minimum permissions: Contents read for browsing; Contents write for publishing. Workflow files may require additional GitHub permissions. If the repository is empty (no commits), the app offers to create a short `README.md` as its first commit, after confirmation and only with a Contents write token.
@@ -84,6 +103,6 @@ File edits and conversation state have local recovery and optional private cloud
 ## Limits
 
 - Text files only. You can create new files (New file button, `/new path [what it should contain]`, or plain requests like "write a new readme containing a smiley" or "create a file called src/util.ts that ..."; folders are created implicitly, "a new readme" picks a fresh name such as `README-2.md` rather than overwriting) and publish them, but not delete, rename or move files, edit binaries, or follow symlinks. Files load lazily, limited to 500 KB. GitHub-truncated trees are rejected. New paths are validated: relative only, no `..`, no `.git`, no collisions with existing files or folders.
-- No shell, build/test runner, local filesystem access, autonomous agent loop, or automatic commits.
+- No shell, build/test runner, local filesystem access, or automatic commits. The opt-in goal loop edits locally only; it cannot execute code or independently access GitHub/network tools.
 - GitHub limits and permissions, network availability, GPU memory, and WebGPU driver support still apply.
 - Unit tests use deterministic summary stubs and mocked GitHub responses. They check compaction structure, budgets and failure handling, not semantic summary quality. Real inference requires downloading weights on compatible hardware.

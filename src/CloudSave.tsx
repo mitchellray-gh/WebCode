@@ -32,20 +32,21 @@ async function cloud(key: string, session?: Session, revision = 0) {
 }
 
 export default function CloudSave({
-  session, busy, restore, connecting,
+  session, busy, restore, connecting, autosaveBusy = busy,
 }: {
   session: Session; busy: boolean; restore: (session: Session) => void;
   connecting: (value: boolean) => void;
+  autosaveBusy?: boolean;
 }) {
   const [key, setKey] = useState("");
   const [connected, setConnected] = useState(false);
   const [working, setWorking] = useState(false);
   const [status, setStatus] = useState("Cloud disconnected. Access key stays in memory.");
-  const current = useRef({ session, busy });
+  const current = useRef({ session, busy: autosaveBusy });
   const saved = useRef<Session | null>(null);
   const revision = useRef(0);
   const inFlight = useRef(false);
-  useEffect(() => { current.current = { session, busy }; }, [session, busy]);
+  useEffect(() => { current.current = { session, busy: autosaveBusy }; }, [session, autosaveBusy]);
   useEffect(() => {
     if (!connected) return;
     const timer = setInterval(async () => {

@@ -82,6 +82,10 @@ import { importWorkspaceArchive, workspaceArchive } from "./archive";
 import CloudSave from "./CloudSave";
 import { recoverySession } from "./recovery";
 import type { Proposal, Session, TranscriptTurn } from "./session";
+import { MAX_SESSION_BYTES } from "./session";
+import GoalPanel from "./GoalPanel";
+import { applyGoalEdit } from "./goalLoop";
+import type { GoalCall, GoalEdit, GoalFiles, GoalSettings } from "./goalLoop";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
 const isChanged = (file: OpenFile) =>
@@ -269,6 +273,9 @@ function App() {
   const [request, setRequest] = useState("");
   const [pinned, setPinned] = useState("");
   const [notes, setNotes] = useState("");
+  const [goalSettings, setGoalSettings] = useState<GoalSettings>({ goal: "", steering: "" });
+  const [goalRunning, setGoalRunning] = useState(false);
+  const goalWorkspace = useRef<{ files: GoalFiles; paths: string[] }>({ files: initialFiles, paths: Object.keys(initialFiles) });
   const [stats, setStats] = useState(emptyCompactionStats);
   const [recoveryReady, setRecoveryReady] = useState(false);
   const [recoveryEnabled, setRecoveryEnabled] = useState(false);
@@ -290,13 +297,13 @@ function App() {
   const memoryRef = useRef<Memory>(emptyMemory());
   const nextId = useRef(1);
   const endOfChat = useRef<HTMLDivElement>(null);
-  const busy = phase !== "idle" || networkBusy || !recoveryReady;
+  const busy = phase !== "idle" || networkBusy || !recoveryReady || goalRunning;
   const session = useMemo<Session>(() => ({
     version: 1,
     files: Object.fromEntries(Object.entries(files).map(([path, file]) => [path, { content: file.content }])),
-    active, transcript, memory, pinned, notes, request, mode,
+    active, transcript, memory, pinned, notes, request, mode, goalLoop: goalSettings,
     model: selectedModelId, proposal,
-  }), [files, active, transcript, memory, pinned, notes, request, mode, selectedModelId, proposal]);
+  }), [files, active, transcript, memory, pinned, notes, request, mode, selectedModelId, proposal, goalSettings]);
   const latestSession = useRef(session);
   const lastSavedSession = useRef<Session | null>(null);
   useEffect(() => { latestSession.current = session; }, [session]);
@@ -335,6 +342,7 @@ function App() {
   const allPaths = repo
     ? [...repo.files.map((file) => file.path), ...newPaths].sort()
     : Object.keys(files).sort();
+  useEffect(() => { goalWorkspace.current = { files, paths: allPaths }; }, [files, allPaths]);
   const visiblePaths = allPaths.filter((path) =>
     path.toLowerCase().includes(filter.toLowerCase()),
   );
@@ -390,6 +398,7 @@ function App() {
     remember(saved.memory);
     setPinned(saved.pinned);
     setNotes(saved.notes);
+    setGoalSettings(saved.goalLoop ?? { goal: "", steering: "" });
     setRequest(saved.request);
     setMode(saved.mode);
     setSelectedModelId(saved.model);
@@ -574,6 +583,7 @@ function App() {
       setLiveBytes(0);
       setPinned("");
       setNotes("");
+      setGoalSettings({ goal: "", steering: "" });
       setRequest("");
       setNotice(
         `${created ? "Created README.md and opened" : "Opened"} ${repository.owner}/${repository.name} at ${repository.head.slice(0, 7)}.`,
@@ -784,6 +794,77 @@ function App() {
     if (!activeFile) return "";
     const selected = range.to > range.from;
     return `File: ${active}${selected ? ` (selected characters ${range.from}-${range.to})` : " (entire file)"}\n${selected ? activeFile.content.slice(range.from, range.to) : activeFile.content}`;
+  }
+
+  async function askGoal(call: GoalCall, signal: AbortSignal) {
+    const instance = model.current;
+    if (!instance) throw new Error("Load the model before starting goal mode.");
+    signal.throwIfAborted();
+    if (latestSession.current.transcript.length >= 19_990 ||
+        bytes(JSON.stringify(latestSession.current)) > MAX_SESSION_BYTES - 64_000)
+      throw new Error("Goal mode paused near the 3 MB save limit. Export your conversation and ZIP, then clear old conversation history before restarting.");
+    const id = nextId.current++;
+    const task = `[Goal ${call.stage}]\n${call.request}`;
+    setTranscript((previous) => [...previous, {
+      id, request: task, response: "", file: "", status: "Preparing context", model: selectedModel.name,
+    }]);
+    const update = (values: Partial<TranscriptTurn>) =>
+      setTranscript((previous) => previous.map((turn) => turn.id === id ? { ...turn, ...values } : turn));
+    const measurement = emptyCompactionStats();
+    const prompt = {
+      instruction: call.instruction, request: task, fileContext: call.fileContext,
+      pinned, notes, skills: skillText,
+    };
+    const reviewing = call.stage === "Review" || call.stage === "Completion review";
+    const contextMemory = reviewing ? emptyMemory() : memoryRef.current;
+    measurement.beforeBytes = promptBytes(assemblePrompt(prompt, contextMemory));
+    measurement.afterBytes = measurement.beforeBytes;
+    setPhase("compacting");
+    try {
+      const prepared = await preparePrompt(prompt, contextMemory,
+        measureSummarizer(instance.summarizer(signal), measurement));
+      signal.throwIfAborted();
+      if (!reviewing) remember(prepared.memory);
+      measurement.afterBytes = prepared.inputBytes;
+      setLiveBytes(prepared.inputBytes);
+      setPhase("thinking");
+      update({ status: "Generating" });
+      let lastUpdate = 0;
+      const answer = await instance.complete(prepared.messages, signal, (text) => {
+        const now = Date.now();
+        if (now - lastUpdate >= 100) { lastUpdate = now; update({ response: text }); }
+      });
+      signal.throwIfAborted();
+      update({ response: answer.text, status: answer.finished ? "Complete" : "Output limit reached" });
+      if (!answer.finished || !answer.text.trim())
+        throw new Error("Goal mode needs a complete, nonempty answer. No draft was applied; narrow the goal or file size and retry.");
+      remember(appendExchange(memoryRef.current, { id, request: task, response: answer.text }));
+      return answer.text;
+    } catch (failure) {
+      update({ status: signal.aborted ? "Cancelled" : "Failed" });
+      throw failure;
+    } finally {
+      setStats({ ...measurement });
+      setPhase("idle");
+    }
+  }
+
+  function applyGoal(edit: GoalEdit) {
+    const workspace = goalWorkspace.current;
+    const next = applyGoalEdit(workspace.files, workspace.paths, edit);
+    goalWorkspace.current = {
+      files: next,
+      paths: workspace.paths.includes(edit.path) ? workspace.paths : [...workspace.paths, edit.path],
+    };
+    setFiles(next);
+    setActive(edit.path);
+    setSelectedRange({ from: 0, to: 0 });
+    const id = nextId.current++;
+    const response = `Applied ${edit.path} locally after model review. Not executed or tested. Nothing published.`;
+    setTranscript((previous) => [...previous, {
+      id, request: "[Goal Apply]", response, file: edit.path, status: "Done",
+    }]);
+    remember(appendExchange(memoryRef.current, { id, request: "[Goal Apply]", response }));
   }
 
   async function send(event: FormEvent) {
@@ -1058,6 +1139,7 @@ function App() {
           memory,
           pinned,
           notes,
+          goalLoop: goalSettings,
           skills: attachedSkills,
         },
         null,
@@ -1207,7 +1289,8 @@ function App() {
               }}>Enable local recovery</button>
             )}
             <p>Local saves run every second. Cloud and recovered files reopen as a local workspace; reconnect GitHub separately.</p>
-            <CloudSave session={session} busy={busy} restore={restoreSession} connecting={setNetworkBusy} />
+            <CloudSave session={session} busy={busy} autosaveBusy={networkBusy || !recoveryReady || (busy && !goalRunning)}
+              restore={restoreSession} connecting={setNetworkBusy} />
           </details>
         </div>
         <div className="file-list">
@@ -1307,7 +1390,7 @@ function App() {
             <CodeMirror
               key={active}
               value={activeFile.content}
-              readOnly={!recoveryReady || networkBusy}
+              readOnly={!recoveryReady || networkBusy || goalRunning}
               height="100%"
               extensions={[
                 ...extensions(active),
@@ -1655,6 +1738,16 @@ function App() {
           </div>
         )}
         <div className="composer-area">
+          <GoalPanel settings={goalSettings} change={setGoalSettings}
+            ready={ready} blocked={busy || Boolean(proposal || review) || creating || connecting || publishing || skillsOpen}
+            workspace={() => goalWorkspace.current}
+            ask={askGoal} apply={applyGoal} running={(running) => {
+              setGoalRunning(running);
+              if (running) setError("");
+              setNotice(running
+                ? "Goal mode is applying reviewed edits locally. Use its steering, Pause, or Stop controls."
+                : "Goal mode stopped. Review local changes and test externally before publishing.");
+            }} failure={setError} />
           <details className="pinned">
             <summary>Project notes (saved, editable)</summary>
             <textarea aria-label="Project notes" value={notes} maxLength={4000} disabled={busy}
@@ -1764,7 +1857,7 @@ function App() {
                     ? `${active.split("/").at(-1)}${selectionSize ? " / selection" : ""}`
                     : "No code context"}
                 </span>
-                {phase === "thinking" || phase === "compacting" ? (
+                {!goalRunning && (phase === "thinking" || phase === "compacting") ? (
                   <button
                     type="button"
                     className="send-button stop"

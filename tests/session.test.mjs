@@ -34,3 +34,10 @@ test("saved state rejects corrupt schemas, unsafe paths, invalid models, and ove
   ]) assert.throws(() => readSession(data));
   assert.throws(() => readSession({ ...session(), request: "x".repeat(MAX_SESSION_BYTES) }), /limit/);
 });
+
+test("goal and steering persist without granting automatic resume permission", () => {
+  const saved = readSession({ ...session(), goalLoop: { goal: "Build a timer", steering: "Keyboard accessible", running: true, enabled: true } });
+  assert.deepEqual(saved.goalLoop, { goal: "Build a timer", steering: "Keyboard accessible" });
+  assert.throws(() => readSession({ ...session(), goalLoop: { goal: "x".repeat(2001), steering: "" } }));
+  assert.ok(!Object.hasOwn(readSession(session()), "goalLoop"));
+});
