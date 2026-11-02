@@ -25,10 +25,11 @@ Weights download from ModelScope (`modelscope.cn`); Hugging Face is never contac
 
 `src/context.ts` is in the actual inference request path:
 
-- Immediately after each completed answer, compact all but the most recent exchange using the local model.
-- Merge adjacent equal-level blocks like a binary counter: 1, 2, 4, 8, 16 exchanges per block. The number of blocks grows logarithmically.
+- Compact only before a request whose assembled prompt exceeds the input budget. Answers return without post-generation compaction; recent exchanges stay verbatim while they fit.
+- Summarize older exchanges in batches of up to 1,400 UTF-8 bytes, retaining the newest exchange verbatim unless it also must be compacted to fit. Recheck the prompt after each batch and stop once it fits.
+- Merge adjacent equal-level blocks like a binary counter: 1, 2, 4, 8, 16 batches per block. The number of blocks grows logarithmically; each block records its actual turn range.
 - Halve summary budgets at each level: 512, 256, 128, then a 96-byte floor. Older history becomes increasingly lossy.
-- Before inference, compact further if needed, including the last exchange and oldest blocks. Summary sources are chunked to at most 1,400 UTF-8 bytes. Reduction has a bounded loop, progress checks and a retry limit.
+- Before inference, compact further if needed, including the last exchange and oldest blocks. Oversized individual exchanges are chunked to at most 1,400 UTF-8 bytes, sharing the output byte budget across chunks where possible to avoid another summarization pass. Reduction has a bounded loop, progress checks and a retry limit.
 - Preserve the latest request, active code selection (or whole active file), and pinned requirements verbatim. Reject oversized protected context instead of silently truncating it.
 - Reserve 768 output tokens and 512 tokens of template/headroom from a 4,096-token context configuration. The remaining 2,816-byte input limit uses conservative UTF-8 byte accounting plus per-message overhead, **not an exact tokenizer count**. This intentionally allows less code than the nominal window. Select a smaller code region when necessary.
 - Keep the full transcript separately for the lifetime of the page, with JSON export. The transcript UI throttles streaming updates and mobile renders only the latest six exchanges; older exchanges remain in the export. Compaction failure is atomic: original turns stay available for retry. Inspect summaries or manually compact in the Memory panel.

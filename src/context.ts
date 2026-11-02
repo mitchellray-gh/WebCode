@@ -16,7 +16,9 @@ export const CONTEXT_WINDOW = 4096;
 export const OUTPUT_TOKENS = 768;
 export const INPUT_BYTE_BUDGET = CONTEXT_WINDOW - OUTPUT_TOKENS - 512;
 export const emptyMemory = (): Memory => ({ nodes: [], recent: [] });
-export const bytes = (text: string) => new TextEncoder().encode(text).length;
+const encoder = new TextEncoder();
+export const bytes = (text: string) => encoder.encode(text).length;
+const SUMMARY_SOURCE_BYTES = 1400;
 export const levelBudget = (level: number) =>
   Math.max(96, Math.floor(512 / 2 ** level));
 
@@ -34,7 +36,8 @@ function chunks(text: string, limit: number): string[] {
   let chunk = "";
   let size = 0;
   for (const character of text) {
-    const width = bytes(character);
+    const point = character.codePointAt(0)!;
+    const width = point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
     if (size + width > limit) {
       result.push(chunk);
       chunk = "";
@@ -54,21 +57,23 @@ async function condense(
 ): Promise<string> {
   let text = source;
   for (let pass = 0; pass < 12; pass++) {
-    const parts = chunks(text, 1400);
+    const parts = chunks(text, SUMMARY_SOURCE_BYTES);
+    const sharedBudget = Math.floor((budget - parts.length + 1) / parts.length);
+    const partBudget = sharedBudget >= 24 ? sharedBudget : budget;
     const summaries: string[] = [];
     for (const part of parts) {
-      const summary = (await summarize(part, budget)).trim();
+      const summary = (await summarize(part, partBudget)).trim();
       if (!summary)
         throw new Error(
           "Memory summary was empty. Original conversation is retained; retry compaction.",
         );
-      if (bytes(summary) > budget) {
-        const retry = (await summarize(summary, budget)).trim();
+      if (bytes(summary) > partBudget) {
+        const retry = (await summarize(summary, partBudget)).trim();
         // A small model can ignore the limit twice; cut at a character boundary so history never blocks a request.
         summaries.push(
-          retry && bytes(retry) <= budget
+          retry && bytes(retry) <= partBudget
             ? retry
-            : chunks(retry || summary, budget)[0],
+            : chunks(retry || summary, partBudget)[0],
         );
       } else summaries.push(summary);
     }
@@ -103,6 +108,35 @@ export function appendExchange(memory: Memory, exchange: Exchange): Memory {
   return { nodes: [...memory.nodes], recent: [...memory.recent, exchange] };
 }
 
+async function compactOldest(
+  memory: Memory,
+  summarize: Summarize,
+  keepRecent: number,
+): Promise<Memory> {
+  const nodes = [...memory.nodes];
+  const count = memory.recent.length - keepRecent;
+  let source = "";
+  let taken = 0;
+  while (taken < count) {
+    const exchange = memory.recent[taken];
+    const next = `${source ? `${source}\n\n` : ""}TURN ${exchange.id}\nUSER:\n${exchange.request}\nASSISTANT:\n${exchange.response}`;
+    if (taken && bytes(next) > SUMMARY_SOURCE_BYTES) break;
+    source = next;
+    taken++;
+  }
+  let node: MemoryNode = {
+    first: memory.recent[0].id,
+    last: memory.recent[taken - 1].id,
+    level: 0,
+    text: await condense(source, levelBudget(0), summarize),
+  };
+  while (nodes.length && nodes.at(-1)!.level === node.level) {
+    node = await merge(nodes.pop()!, node, summarize);
+  }
+  nodes.push(node);
+  return { nodes, recent: memory.recent.slice(taken) };
+}
+
 export async function compactMemory(
   memory: Memory,
   summarize: Summarize,
@@ -110,26 +144,11 @@ export async function compactMemory(
 ): Promise<Memory> {
   if (!Number.isInteger(keepRecent) || keepRecent < 0)
     throw new Error("Invalid recent-turn count");
-  const nodes = [...memory.nodes];
-  const recent = [...memory.recent];
-  while (recent.length > keepRecent) {
-    const exchange = recent.shift()!;
-    let node: MemoryNode = {
-      first: exchange.id,
-      last: exchange.id,
-      level: 0,
-      text: await condense(
-        `USER:\n${exchange.request}\nASSISTANT:\n${exchange.response}`,
-        levelBudget(0),
-        summarize,
-      ),
-    };
-    while (nodes.length && nodes.at(-1)!.level === node.level) {
-      node = await merge(nodes.pop()!, node, summarize);
-    }
-    nodes.push(node);
+  let result = memory;
+  while (result.recent.length > keepRecent) {
+    result = await compactOldest(result, summarize, keepRecent);
   }
-  return { nodes, recent };
+  return result;
 }
 
 export type PromptInput = {
@@ -179,10 +198,14 @@ export async function preparePrompt(
 ) {
   if (promptBytes(assemblePrompt(input, emptyMemory())) > limit)
     throw new ContextBudgetError();
-  let memory = await compactMemory(original, summarize);
+  let memory = original;
   let messages = assemblePrompt(input, memory);
-  if (promptBytes(messages) > limit) {
-    memory = await compactMemory(memory, summarize, 0);
+  while (promptBytes(messages) > limit && memory.recent.length) {
+    memory = await compactOldest(
+      memory,
+      summarize,
+      memory.recent.length > 1 ? 1 : 0,
+    );
     messages = assemblePrompt(input, memory);
   }
   while (promptBytes(messages) > limit && memory.nodes.length > 1) {

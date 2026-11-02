@@ -809,25 +809,6 @@ function App() {
         setNotice(
           "Output limit reached. No edit was staged; select a smaller section and retry.",
         );
-      setPhase("compacting");
-      try {
-        const compacted = await compactMemory(
-          pending,
-          instance.summarizer(abort.signal),
-        );
-        abort.signal.throwIfAborted();
-        remember(compacted);
-      } catch (failure) {
-        if (abort.signal.aborted)
-          setNotice("Compaction stopped. Original turns are still retained.");
-        else
-          setError(
-            failureMessage(
-              failure,
-              "Compaction failed; original turns retained.",
-            ),
-          );
-      }
     } catch (failure) {
       updateTurn({ status: abort.signal.aborted ? "Cancelled" : "Failed" });
       if (!abort.signal.aborted)

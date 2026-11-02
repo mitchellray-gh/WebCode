@@ -26,7 +26,7 @@ const input = {
   request: "Explain the current code exactly.",
 };
 
-test("completed turns compact immediately into a logarithmic binary hierarchy", async () => {
+test("explicit compaction maintains a logarithmic binary hierarchy", async () => {
   let memory = emptyMemory();
   for (let id = 1; id <= 129; id++) {
     memory = await compactMemory(appendExchange(memory, turn(id)), summarize);
@@ -40,6 +40,118 @@ test("completed turns compact immediately into a logarithmic binary hierarchy", 
   assert.equal(memory.nodes[0].first, 1);
   assert.equal(memory.nodes[0].last, 128);
   assert.deepEqual(memory.recent[0], turn(129));
+});
+
+test("prompts that already fit retain verbatim history without any summary calls", async () => {
+  let memory = emptyMemory();
+  for (let id = 1; id <= 4; id++) {
+    memory = appendExchange(memory, { id, request: `Task ${id}`, response: "Done." });
+  }
+  const limit = promptBytes(assemblePrompt(input, memory));
+  const prepared = await preparePrompt(input, memory, async () => {
+    assert.fail("A fitting prompt must not trigger inference for compaction");
+  }, limit);
+  assert.equal(prepared.memory, memory);
+  assert.equal(prepared.inputBytes, limit);
+  assert.deepEqual(prepared.messages, assemblePrompt(input, memory));
+});
+
+test("budget pressure batches short older exchanges into one summary call", async () => {
+  let memory = emptyMemory();
+  for (let id = 1; id <= 8; id++) {
+    memory = appendExchange(memory, {
+      id,
+      request: `Task ${id}`,
+      response: "x".repeat(80),
+    });
+  }
+  const snapshot = structuredClone(memory);
+  let calls = 0;
+  const prepared = await preparePrompt(input, memory, async (source, budget) => {
+    calls++;
+    assert.ok(bytes(source) <= 1400);
+    for (let id = 1; id <= 7; id++) assert.ok(source.includes(`TURN ${id}\n`));
+    assert.ok(!source.includes("TURN 8\n"));
+    return summarize(source, budget);
+  }, 1100);
+  assert.equal(calls, 1);
+  assert.ok(prepared.inputBytes <= 1100);
+  assert.deepEqual(prepared.memory.recent, [memory.recent.at(-1)]);
+  assert.deepEqual(
+    prepared.memory.nodes.map(({ first, last }) => [first, last]),
+    [[1, 7]],
+  );
+  assert.deepEqual(memory, snapshot);
+});
+
+test("automatic compaction stops after the first batch that makes the prompt fit", async () => {
+  let memory = emptyMemory();
+  for (let id = 1; id <= 3; id++) memory = appendExchange(memory, turn(id));
+  const limit = promptBytes(assemblePrompt(input, memory)) - 500;
+  let calls = 0;
+  const prepared = await preparePrompt(input, memory, async (source, budget) => {
+    calls++;
+    return summarize(source, budget);
+  }, limit);
+  assert.equal(calls, 1);
+  assert.ok(prepared.inputBytes <= limit);
+  assert.deepEqual(prepared.memory.recent, memory.recent.slice(1));
+});
+
+test("large exchanges share summary budgets across chunks without a reduction pass", async () => {
+  const memory = appendExchange(emptyMemory(), {
+    id: 1,
+    request: "Task",
+    response: "x".repeat(3000),
+  });
+  let calls = 0;
+  const compacted = await compactMemory(memory, async (source, budget) => {
+    calls++;
+    assert.ok(bytes(source) <= 1400);
+    return "s".repeat(budget);
+  }, 0);
+  assert.equal(calls, 3);
+  assert.ok(bytes(compacted.nodes[0].text) <= levelBudget(0));
+});
+
+test("failed automatic batching retains all original turns for retry", async () => {
+  let memory = emptyMemory();
+  for (let id = 1; id <= 4; id++) memory = appendExchange(memory, turn(id));
+  const snapshot = structuredClone(memory);
+  let calls = 0;
+  await assert.rejects(preparePrompt(input, memory, async () => {
+    calls++;
+    if (calls === 2) throw new Error("GPU interrupted");
+    return "summary";
+  }, 800), /GPU interrupted/);
+  assert.equal(calls, 2);
+  assert.deepEqual(memory, snapshot);
+});
+
+test("129 large-response turns stay within budget using at most 511 summary calls", async () => {
+  let memory = emptyMemory();
+  let calls = 0;
+  for (let id = 1; id <= 129; id++) {
+    const prepared = await preparePrompt(input, memory, async (source, budget) => {
+      calls++;
+      assert.ok(bytes(source) <= 1400);
+      return "s".repeat(budget);
+    });
+    assert.ok(prepared.inputBytes <= 2816);
+    memory = appendExchange(prepared.memory, {
+      id,
+      request: "Request ".repeat(20),
+      response: "x".repeat(3000),
+    });
+    const ids = [
+      ...memory.nodes.flatMap((node) =>
+        Array.from({ length: node.last - node.first + 1 }, (_, index) => node.first + index),
+      ),
+      ...memory.recent.map((exchange) => exchange.id),
+    ];
+    assert.deepEqual(ids, Array.from({ length: id }, (_, index) => index + 1));
+  }
+  assert.ok(calls <= 511, `Expected at most 511 calls, got ${calls}`);
 });
 
 test("budget pressure compacts recent history but preserves pinned requirements, current code and request", async () => {
