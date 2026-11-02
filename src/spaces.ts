@@ -1,7 +1,9 @@
-export type Space = { id: string; name: string; instructions: string; paths: string[] };
+export type SpaceTask = { name: string; goal: string };
+export type Space = { id: string; name: string; instructions: string; paths: string[]; tasks: SpaceTask[] };
 export type SpacesState = { spaces: Space[]; active: string };
 
 export const MAX_SPACES = 12;
+export const MAX_TASKS = 10;
 export const EMPTY_SPACES: SpacesState = { spaces: [], active: "" };
 const MAX_PATHS = 20;
 
@@ -37,11 +39,19 @@ export function readSpaces(value: unknown): SpacesState {
     if (!id || ids.has(id)) throw new Error("Invalid saved space id.");
     ids.add(id);
     if (!Array.isArray(item.paths) || item.paths.length > MAX_PATHS) throw new Error("Invalid saved space files.");
+    // Spaces saved before reusable tasks existed have no task list.
+    const rawTasks = item.tasks === undefined ? [] : item.tasks;
+    if (!Array.isArray(rawTasks) || rawTasks.length > MAX_TASKS) throw new Error("Invalid saved space tasks.");
     return {
       id,
       name: plain(item.name, 40, "name"),
       instructions: plain(item.instructions, 1000, "instructions"),
       paths: item.paths.map((path: unknown) => plain(path, 200, "file")),
+      tasks: rawTasks.map((task: unknown): SpaceTask => {
+        if (!task || typeof task !== "object" || Array.isArray(task)) throw new Error("Invalid saved space task.");
+        const entry = task as Record<string, unknown>;
+        return { name: plain(entry.name, 40, "task name"), goal: plain(entry.goal, 1900, "task goal") };
+      }),
     };
   });
   const active = plain(data.active ?? "", 40, "selection");
@@ -52,7 +62,7 @@ export const activeSpace = (state: SpacesState) => state.spaces.find((space) => 
 
 export function addSpace(state: SpacesState, id: string, paths: string[] = []): SpacesState {
   if (state.spaces.length >= MAX_SPACES) throw new Error(`You can keep up to ${MAX_SPACES} spaces. Delete one first.`);
-  const space: Space = { id, name: `Space ${state.spaces.length + 1}`, instructions: "", paths: paths.slice(0, MAX_PATHS) };
+  const space: Space = { id, name: `Space ${state.spaces.length + 1}`, instructions: "", paths: paths.slice(0, MAX_PATHS), tasks: [] };
   return { spaces: [...state.spaces, space], active: id };
 }
 
@@ -64,8 +74,22 @@ export function updateSpace(state: SpacesState, id: string, patch: Partial<Omit<
       ...(patch.name === undefined ? {} : { name: patch.name.slice(0, 40) }),
       ...(patch.instructions === undefined ? {} : { instructions: patch.instructions.slice(0, 1000) }),
       ...(patch.paths === undefined ? {} : { paths: patch.paths.slice(0, MAX_PATHS) }),
+      ...(patch.tasks === undefined ? {} : { tasks: patch.tasks.slice(0, MAX_TASKS) }),
     }),
   };
+}
+
+/** Saves (or replaces by name) a reusable agent goal inside a space. */
+export function saveTask(state: SpacesState, id: string, name: string, goal: string): SpacesState {
+  const space = state.spaces.find((candidate) => candidate.id === id);
+  const label = name.replace(/\s+/g, " ").trim().slice(0, 40);
+  const text = goal.trim().slice(0, 1900);
+  if (!space) throw new Error("Choose a space first.");
+  if (!label) throw new Error("Name the task before saving it.");
+  if (!text) throw new Error("Write a goal before saving it as a task.");
+  const others = space.tasks.filter((task) => task.name.toLowerCase() !== label.toLowerCase());
+  if (others.length >= MAX_TASKS) throw new Error(`A space keeps up to ${MAX_TASKS} tasks. Delete one first.`);
+  return updateSpace(state, id, { tasks: [...others, { name: label, goal: text }] });
 }
 
 export const removeSpace = (state: SpacesState, id: string): SpacesState => ({

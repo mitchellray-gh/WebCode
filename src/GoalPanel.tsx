@@ -10,6 +10,7 @@ export default function GoalPanel(props: {
   workspace: () => { files: GoalFiles; paths: string[] };
   tools?: GoalTools;
   hint?: () => string;
+  split?: (goal: string) => Promise<string>;
   ask: (call: GoalCall, signal: AbortSignal) => Promise<string>;
   apply: (edit: GoalEdit) => void;
   running: (running: boolean) => void;
@@ -88,8 +89,23 @@ export default function GoalPanel(props: {
             }}>Send steering</button>
           <div className="goal-actions">
             {!active ? (
-              <button className="button primary" disabled={props.blocked || !props.ready || !props.settings.goal.trim()}
-                onClick={() => void start()}>Start / resume</button>
+              <>
+                <button className="button primary" disabled={props.blocked || !props.ready || !props.settings.goal.trim()}
+                  onClick={() => void start()}>Start / resume</button>
+                {props.split && (
+                  <button className="button" disabled={props.blocked || !props.ready || !props.settings.goal.trim()}
+                    title="Ask the model to break the goal into 2 to 5 ordered steps"
+                    onClick={async () => {
+                      setStatus("Splitting the goal into steps...");
+                      try {
+                        props.change({ ...props.settings, goal: await props.split!(props.settings.goal) });
+                        setStatus("Added a step list to the goal. Edit it if needed, then press Start / resume.");
+                      } catch (error) {
+                        setStatus(error instanceof Error ? error.message : "Could not split the goal.");
+                      }
+                    }}>Split into steps</button>
+                )}
+              </>
             ) : (
               <>
                 <button className="button" disabled={paused} onClick={() => {

@@ -1,13 +1,18 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { activeSpace, addSpace, parsePaths, removeSpace, updateSpace } from "./spaces";
+import { activeSpace, addSpace, parsePaths, removeSpace, saveTask, updateSpace } from "./spaces";
 import type { SpacesState } from "./spaces";
 
-function Editor({ state, change, openPaths, disabled }: {
+type Props = {
   state: SpacesState; change: (state: SpacesState) => void; openPaths: string[]; disabled: boolean;
-}) {
+  goal: string; loadGoal: (goal: string) => void;
+};
+
+function Editor({ state, change, openPaths, disabled, goal, loadGoal }: Props) {
   const space = activeSpace(state)!;
   const [paths, setPaths] = useState(space.paths.join("\n"));
+  const [taskName, setTaskName] = useState("");
+  const [taskError, setTaskError] = useState("");
   return (
     <div className="space-editor">
       <label>Name
@@ -40,13 +45,40 @@ function Editor({ state, change, openPaths, disabled }: {
           <Trash2 size={14} />Delete space
         </button>
       </div>
+      <p><strong>Saved tasks</strong> (reusable Agent mode goals; run one on demand, nothing starts by itself)</p>
+      <ul className="connector-tools">
+        {space.tasks.map((task) => (
+          <li key={task.name}>
+            <span>{task.name}</span>{" "}
+            <button className="button" disabled={disabled} onClick={() => loadGoal(task.goal)}>Use as goal</button>{" "}
+            <button className="icon-button" disabled={disabled} aria-label={`Delete task ${task.name}`} title="Delete task"
+              onClick={() => change(updateSpace(state, space.id, { tasks: space.tasks.filter((entry) => entry.name !== task.name) }))}>
+              <Trash2 size={14} />
+            </button>
+          </li>
+        ))}
+        {!space.tasks.length && <li>No saved tasks yet.</li>}
+      </ul>
+      <label>Save the current goal as a task
+        <input value={taskName} maxLength={40} disabled={disabled} placeholder="Task name, e.g. Add tests"
+          onChange={(event) => setTaskName(event.target.value)} />
+      </label>
+      <button className="button" disabled={disabled || !goal.trim() || !taskName.trim()}
+        onClick={() => {
+          try {
+            setTaskError("");
+            change(saveTask(state, space.id, taskName, goal));
+            setTaskName("");
+          } catch (failure) {
+            setTaskError(failure instanceof Error ? failure.message : "Could not save the task.");
+          }
+        }}>Save task</button>
+      {taskError && <p className="form-error" role="alert">{taskError}</p>}
     </div>
   );
 }
 
-export default function SpacePanel({ state, change, openPaths, disabled }: {
-  state: SpacesState; change: (state: SpacesState) => void; openPaths: string[]; disabled: boolean;
-}) {
+export default function SpacePanel({ state, change, openPaths, disabled, goal, loadGoal }: Props) {
   const [error, setError] = useState("");
   const space = activeSpace(state);
   return (
@@ -71,7 +103,7 @@ export default function SpacePanel({ state, change, openPaths, disabled }: {
         </button>
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      {space && <Editor key={space.id} state={state} change={change} openPaths={openPaths} disabled={disabled} />}
+      {space && <Editor key={space.id} state={state} change={change} openPaths={openPaths} disabled={disabled} goal={goal} loadGoal={loadGoal} />}
     </div>
   );
 }

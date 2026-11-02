@@ -99,6 +99,7 @@ import { checkPage } from "./pageCheck";
 import SpacePanel from "./SpacePanel";
 import { inlineBridge, inlineExtension } from "./inlineSuggest";
 import { findInstructionPath, instructionBlock } from "./repoInstructions";
+import { SPLIT_INSTRUCTION, SPLIT_SCHEMA, withSteps } from "./goalSteps";
 import { SUGGEST_INSTRUCTION, cleanSuggestion, suggestionPrompt } from "./suggest";
 import ConnectorPanel from "./ConnectorPanel";
 import { McpClient, toolSchema } from "./mcp";
@@ -1041,7 +1042,7 @@ function App() {
       instruction: call.instruction, request: task, fileContext: call.fileContext,
       pinned: effectivePinned, notes, skills: skillText,
     };
-    const reviewing = call.stage === "Review" || call.stage === "Completion review" || call.stage === "PR review";
+    const reviewing = call.stage === "Review" || call.stage === "Completion review" || call.stage === "PR review" || call.stage === "Split";
     const contextMemory = reviewing ? emptyMemory() : memoryRef.current;
     measurement.beforeBytes = promptBytes(assemblePrompt(prompt, contextMemory));
     measurement.afterBytes = measurement.beforeBytes;
@@ -1150,6 +1151,23 @@ function App() {
       return report;
     },
   };
+
+  async function splitGoal(goal: string) {
+    if (!model.current || !ready) throw new Error("Load a browser model first.");
+    const abort = new AbortController();
+    controller.current = abort;
+    setNetworkBusy(true);
+    try {
+      const reply = await askGoal({
+        stage: "Split", instruction: SPLIT_INSTRUCTION, request: `Goal to split:\n${goal.split("\n\nWork through these steps")[0]}`,
+        fileContext: "", schema: SPLIT_SCHEMA,
+      }, abort.signal);
+      return withSteps(goal, reply);
+    } finally {
+      setNetworkBusy(false);
+      controller.current = null;
+    }
+  }
 
   function applyGoal(edit: GoalEdit) {
     const workspace = goalWorkspace.current;
@@ -2172,7 +2190,7 @@ function App() {
         <div className="composer-area">
           <GoalPanel settings={goalSettings} change={setGoalSettings}
             ready={ready} blocked={busy || Boolean(proposal || review) || creating || connecting || publishing || skillsOpen}
-            workspace={() => goalWorkspace.current} tools={agentTools}
+            workspace={() => goalWorkspace.current} tools={agentTools} split={splitGoal}
             hint={() => spaceInfo.hint}
             ask={askGoal} apply={applyGoal} running={(running) => {
               setGoalRunning(running);
@@ -2198,7 +2216,8 @@ function App() {
               Spaces
               {spaces.active && <span className="status-dot online" />}
             </summary>
-            <SpacePanel state={spaces} change={setSpaces} openPaths={Object.keys(files)} disabled={busy} />
+            <SpacePanel state={spaces} change={setSpaces} openPaths={Object.keys(files)} disabled={busy}
+              goal={goalSettings.goal} loadGoal={(goal) => setGoalSettings({ goal, steering: "" })} />
           </details>
           <details className="pinned">
             <summary>
