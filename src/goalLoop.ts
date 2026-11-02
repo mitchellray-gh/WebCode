@@ -43,15 +43,15 @@ function record(text: string): Record<string, unknown> {
     value = JSON.parse(extractCodeBlock(text) ?? text);
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
-    throw new Error("Goal mode received source code or malformed JSON instead of a plan/review. This step was not applied; restart to retry.");
+    throw new Error("Agent mode received source code or malformed JSON instead of a plan/review. This step was not applied; restart to retry.");
   }
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Goal mode expected a JSON object. No changes were applied.");
+    throw new Error("Agent mode expected a JSON object. No changes were applied.");
   return value as Record<string, unknown>;
 }
 function field(value: unknown, name: string, limit = 1000): string {
   if (typeof value !== "string" || !value.trim() || value.length > limit)
-    throw new Error(`Goal mode returned invalid ${name}. No changes were applied.`);
+    throw new Error(`Agent mode returned invalid ${name}. No changes were applied.`);
   return value;
 }
 function reviewResult(text: string) {
@@ -68,7 +68,7 @@ export function applyGoalEdit(files: GoalFiles, reservedPaths: string[], edit: G
     throw new Error("File changed during the loop. Paused instead of overwriting local work.");
   if (!current) {
     if (Object.keys(files).length >= 1000)
-      throw new Error("Goal mode reached the 1,000-file save limit. Download a ZIP before continuing.");
+      throw new Error("Agent mode reached the 1,000-file save limit. Download a ZIP before continuing.");
     const problem = validateNewPath(edit.path, reservedPaths);
     if (problem) throw new Error(`Cannot create ${edit.path}: ${problem}`);
   }

@@ -1,6 +1,6 @@
 # technicalskills
 
-A lightweight browser coding workspace using React, CodeMirror, GitHub REST API, and WebLLM. No hosted AI inference. Optional private Neon saves use a Vercel API function; inference stays in your browser. Manual review-first edits by default, with an opt-in goal-driven local coding loop.
+A lightweight browser coding workspace using React, CodeMirror, GitHub REST API, and WebLLM. No hosted AI inference. Optional private Neon saves use a Vercel API function; inference stays in your browser. Manual review-first edits by default, with an opt-in, steerable Agent mode that plans, searches, edits, runs your page to check it, and can use issues, pull requests, Spaces and approved MCP tools.
 
 ## Run
 
@@ -21,7 +21,7 @@ Llama 3.2 1B Instruct (`Llama-3.2-1B-Instruct-q4f32_1-MLC`) is the default on de
 
 Weights download from ModelScope (`modelscope.cn`); Hugging Face is never contacted. The WebAssembly runtime comes from `raw.githubusercontent.com`. Code and requests go to the local inference worker, not a hosted AI endpoint. Fonts load from Google Fonts, with local fallbacks. Respect the Llama license and acceptable-use policy when redistributing. The WebLLM runtime is several MB and is loaded on demand, separate from model weights.
 
-Explain, Edit, and goal-loop stages share explicit code-generation capabilities: models can write apps and replacement source; execution, testing, downloads, and publishing are separate app/user actions. Explain also supplies code when asked to build something. Earlier assistant refusals are not treated as project constraints and are dropped from compacted history. This reduces misleading capability refusals but cannot guarantee response quality from small models. If an old conversation keeps reinforcing a refusal, use **New conversation** (export first); this clears chat and summaries, not workspace files.
+Explain, Edit, and Agent mode stages share explicit code-generation capabilities: models can write apps and replacement source; execution, testing, downloads, and publishing are separate app/user actions. Explain also supplies code when asked to build something. Earlier assistant refusals are not treated as project constraints and are dropped from compacted history. This reduces misleading capability refusals but cannot guarantee response quality from small models. If an old conversation keeps reinforcing a refusal, use **New conversation** (export first); this clears chat and summaries, not workspace files.
 
 Recognizable capability refusals are excluded from recent inference history without deleting the transcript. A completed capability refusal (including prose wrapped in code fences), or an Edit/draft response missing its code fence, triggers at most one clean-context retry with the current task and protected system context. Retry prompts obey the same byte budget. Repeated invalid results fail visibly instead of becoming editable source or new model memory; no unlimited retries or fabricated fallback code are used.
 
@@ -65,7 +65,7 @@ Choose the **Play** button above the editor (or type `/run [page.html]`, or "run
 
 - **Isolation:** the app runs in a sandboxed iframe with an opaque origin and no `allow-same-origin`: it cannot read your workspace, recovery copy, Neon key, GitHub token or any saved data, and it cannot navigate this page or open popups. `localStorage`/`sessionStorage` are replaced with temporary in-memory versions because browsers block the real ones there. Network requests made by the previewed app are **not** blocked, so don't put secrets in previewed code. Modal dialogs (`alert`) are allowed; an infinite loop in the app can freeze the tab, though your work is recovered from the once-a-second local save.
 - **Not a real server:** nothing listens on a port, no other device can reach the preview, and Node/Express/Python servers, npm, bundlers, TypeScript, JSX and `import` between workspace files (ES modules) are not supported; the preview says so when it sees them. Only files open in the editor are served (open remote files first), and `fetch()` of workspace files isn't supported. To run those projects, download the ZIP and run them on a computer.
-- Launching is always an explicit action. The goal loop and the assistant never run code on their own.
+- Launching is always an explicit action. Agent mode's page check runs your page only while you have started a run, in a hidden isolated frame; the assistant never runs code otherwise.
 
 ### Recovery and private Neon saves
 
@@ -88,14 +88,14 @@ The `/api/workspace` handler is a Vercel Node function; `npm run dev` alone serv
 
 Worker errors, worker message errors, and inference/runtime exceptions mark the model offline and preserve the workspace. A pending generation with no progress for 120 seconds fails explicitly rather than leaving Send permanently blocked. Choose **Load model** again (or a smaller model). Stopping generation terminates the worker to release resources, so cancellation also requires a reload. A completely killed Chrome tab cannot report an error; reopening uses the local recovery copy.
 
-### Goal-driven local coding loop
+### Agent mode (local, steerable, reviewed)
 
-Load a browser model, then enable **Goal-driven coding loop** in the assistant. Set a specific goal and choose **Start / resume**. Resolve or discard any pending manual proposal first. This is explicit permission to auto-apply **local** edits to all open files and create new files:
+Load a browser model, then enable **Agent mode** in the assistant. Set a specific goal and choose **Start / resume**. Resolve or discard any pending manual proposal first. This is explicit permission to apply **local** edits to open files and create new files, and to use the read-only/sandboxed tools below. Each cycle:
 
-1. **Plan / inspect:** choose one focused file/step, inspecting open files as needed.
+1. **Plan:** the model picks one focused action: `inspect` an open file, `search` (open files, repository paths, and GitHub code search when you have a token), `read` an unopened repository file into the workspace, `check` (run your page in a hidden sandbox and report console errors), `tool` (call an approved MCP connector tool), `edit`, or `done`. The action list is enforced by a JSON schema, and only offers actions that are available.
 2. **Draft:** generate a complete replacement for one file.
 3. **Review / revise:** a separate model request reviews correctness, regressions, goal compliance, obvious unsafe behavior, and unnecessary complexity. Review prompts include the goal, steering, protected requirements/notes/skills, and original/proposed code, but omit conversational history to reduce anchoring and avoid needless history-compaction work. Findings trigger a corrected draft and another review, up to two revisions per change.
-4. **Apply:** only an explicit review pass allows the app to apply that candidate, with a stale-content/path-collision check. Then it plans the next step. A completion claim receives a separate model review before stopping, but is labeled **model-reported, not tested**.
+4. **Apply and check:** only an explicit review pass allows the app to apply that candidate, with a stale-content/path-collision check. If the workspace has an HTML page, it is then run in an isolated hidden frame for about 1.5 seconds and any console errors, missing files, or unsupported sources are fed into the next plan, so the agent can fix real runtime errors. A completion claim receives a separate model review that sees the latest check, but remains **model-reported**.
 
 Use **Steer the next cycle → Send steering** while running to change direction. The latest steering replaces earlier steering and takes precedence over historical notes. An in-flight draft based on older steering is discarded before application. **Pause after cycle** finishes the current review/application cycle without unloading the model. **Stop now** cancels immediately and leaves unreviewed drafts unapplied; interrupting inference requires reloading the model.
 
@@ -103,9 +103,22 @@ There is no fixed iteration count. The loop yields between cycles and continues 
 
 Every model stage is visible in the conversation as a brief plan, proposed code, or review result, not private internal reasoning. Goal/steering, conversation, and applied edits are saved through local recovery and connected Neon autosave. The toggle/run authorization is never saved; reload restores work but never restarts execution. Manual editing, chat submission, repository changes, and publishing are locked during the loop. Cloud autosave can continue while it runs.
 
-Only already-open files and newly created files are editable. Unopened remote files are not fetched automatically. The normal protected prompt budget still applies to every stage, including original plus proposed code during review: large files or goals stop explicitly instead of silently omitting code. Small focused files work best with the browser models and 768-token output limit.
+Only open files and newly created files are editable. The agent can open unopened repository files with `read` (one file at a time, 500 KB limit); it never bulk-downloads the repository. The normal protected prompt budget still applies to every stage, including original plus proposed code during review: large files or goals stop explicitly instead of silently omitting code. Small focused files work best with the browser models and 768-token output limit. The agent also stops after 10 consecutive read-only steps (search/read/check/inspect/tool) without an edit.
 
-**Review is not cleansing or certification:** the same small model can miss its own bugs or be misled by source text. No generated code is executed, no compiler/tests/linter run inside the workspace, and nothing is automatically committed, published, or deployed. If working on this app's own source, edits affect the workspace copy, not the live running app; review, test externally, and publish explicitly.
+**Review is not cleansing or certification:** the same small model can miss its own bugs or be misled by source text. The only code that runs is your web page inside the isolated check frame (no workspace, credentials or storage access; it cannot open popups). No compiler, test runner or linter runs, and nothing is automatically committed, published, or deployed. If working on this app's own source, edits affect the workspace copy, not the live running app; review, test, and publish explicitly.
+
+### Copilot-style workflow features
+
+All of these run in your browser with your local model; none of them make the model stronger. Small models (0.4B-3B) will write weaker code and make more planning mistakes than Copilot's hosted models.
+
+- **Issues to goals:** `/issues` lists open issues; `/issue N` loads an issue (title, body, first comments, marked as untrusted data) as the agent's goal. Reading public repositories needs no token.
+- **Pull requests:** after `/publish`, `/pr [title]` (or **Create pull request now** in Changes) opens a pull request from the new branch. Needs a token with Pull requests write.
+- **AI pull request review:** `/review N` fetches the PR diff and reviews it locally in chunks of about 1.2 KB (up to 24 chunks, 30 files), each constrained to a JSON findings schema. You see the combined review in the chat; **nothing is posted until you press Post review comment and confirm**. Model text is defanged (no @mentions or raw HTML) and the comment states that a small model wrote it. Binary and very large files are skipped and counted.
+- **Spaces:** named project contexts (instructions up to 1,000 characters, up to 20 focus files, up to 12 spaces). The active space's instructions are added verbatim to every request and to the agent's protected prompt (they count toward the 2,816-byte input budget); its files are listed for the agent's planner. Spaces are saved with your workspace.
+- **Connectors (MCP over HTTPS):** connect an MCP server by URL (plus an optional bearer token) so the agent can call its tools. Requirements and behavior: `https://` only (`http://` only for localhost), no credentials in the URL, the server must allow browser requests (CORS), URL and token are kept in memory and never saved or exported. The model only sees tool names and short descriptions, and tool arguments are limited to flat string/number/integer/boolean fields enforced by a schema; anything else is simplified to text. **You approve each tool the first time the agent uses it in a run**, with the host and arguments shown; declined calls never leave your browser. Tool output is clipped to 1.5 KB and labeled untrusted for the next step. Only HTTP (JSON or event-stream responses) is supported, not stdio or legacy SSE transports, OAuth flows, resources, prompts or sampling.
+- **Token help:** the pre-filled token link requests Contents write, Pull requests write and Issues read. Code search, issues, pull requests and review comments need a token for private repositories or writes.
+
+**Not provided:** parallel sub-agents ("fleet" mode; one local model on one device runs one request at a time), scheduled or triggered automation (a browser tab cannot run while closed), a developer SDK, cloud agent sessions, and sessions that continue on other devices. Agent mode also cannot run Node servers, tests, or builds.
 
 ### Connect and publish
 
@@ -118,6 +131,6 @@ File edits and conversation state have local recovery and optional private cloud
 ## Limits
 
 - Text files only. You can create new files (New file button, `/new path [what it should contain]`, or plain requests like "write a new readme containing a smiley" or "create a file called src/util.ts that ..."; folders are created implicitly, "a new readme" picks a fresh name such as `README-2.md` rather than overwriting) and publish them, but not delete, rename or move files, edit binaries, or follow symlinks. Files load lazily, limited to 500 KB. GitHub-truncated trees are rejected. New paths are validated: relative only, no `..`, no `.git`, no collisions with existing files or folders.
-- No shell, build/test runner, local filesystem access, or automatic commits. The opt-in goal loop edits locally only; it cannot execute code or independently access GitHub/network tools. The only code that runs is a web app you explicitly launch in the isolated preview above.
+- No shell, build/test runner, local filesystem access, or automatic commits. The opt-in agent edits locally only and calls GitHub or connector tools only through the app's validated, bounded functions (connector tools after your approval). The only code that runs is a web page you launch in the isolated preview, or that Agent mode checks in the hidden sandbox during a run you started.
 - GitHub limits and permissions, network availability, GPU memory, and WebGPU driver support still apply.
 - Unit tests use deterministic compaction and mocked GitHub responses. They check compaction structure, budgets and failure handling, not semantic summary quality. Real inference requires downloading weights on compatible hardware.

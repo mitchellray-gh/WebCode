@@ -948,11 +948,11 @@ function App() {
 
   async function askGoal(call: GoalCall, signal: AbortSignal) {
     const instance = model.current;
-    if (!instance) throw new Error("Load the model before starting goal mode.");
+    if (!instance) throw new Error("Load the model before starting agent mode.");
     signal.throwIfAborted();
     if (latestSession.current.transcript.length >= 19_990 ||
         bytes(JSON.stringify(latestSession.current)) > MAX_SESSION_BYTES - 64_000)
-      throw new Error("Goal mode paused near the 3 MB save limit. Export your conversation and ZIP, then clear old conversation history before restarting.");
+      throw new Error("Agent mode paused near the 3 MB save limit. Export your conversation and ZIP, then clear old conversation history before restarting.");
     const id = nextId.current++;
     const task = `[Goal ${call.stage}]\n${call.request}`;
     setTranscript((previous) => [...previous, {
@@ -988,7 +988,7 @@ function App() {
       signal.throwIfAborted();
       update({ response: answer.text, status: answer.finished ? "Complete" : "Output limit reached" });
       if (!answer.finished || !answer.text.trim())
-        throw new Error("Goal mode needs a complete, nonempty answer. No draft was applied; narrow the goal or file size and retry.");
+        throw new Error("Agent mode needs a complete, nonempty answer. No draft was applied; narrow the goal or file size and retry.");
       if (!reviewing) remember(appendExchange(memoryRef.current, { id, request: task, response: answer.text }));
       return answer.text;
     } catch (failure) {
@@ -2067,8 +2067,8 @@ function App() {
               if (!running) approvedTools.current.clear();
               if (running) setError("");
               setNotice(running
-                ? "Goal mode is applying reviewed edits locally. Use its steering, Pause, or Stop controls."
-                : "Goal mode stopped. Review local changes and test externally before publishing.");
+                ? "Agent mode is working on your open files and applying reviewed edits locally. Use its steering, Pause, or Stop controls."
+                : "Agent mode stopped. Review local changes before publishing.");
             }} failure={setError} />
           <details className="pinned">
             <summary>

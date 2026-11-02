@@ -46,7 +46,7 @@ export default function GoalPanel(props: {
         pauseRequested: () => pause.current,
         stage: (cycle, stage, detail) => setStatus(`Cycle ${cycle} · ${stage}: ${detail}`),
       });
-      setStatus(result === "paused" ? "Paused after the current cycle. Restart to continue." : "Model reports the goal complete. Review the changes and test externally.");
+      setStatus(result === "paused" ? "Paused after the current cycle. Restart to continue." : "Model reports the goal complete. Review the changes before publishing.");
     } catch (error) {
       const message = controller.signal.aborted
         ? "Stopped. Unreviewed drafts were not applied. Reload the model if generation was interrupted."
@@ -63,11 +63,11 @@ export default function GoalPanel(props: {
       <label className="goal-toggle">
         <input type="checkbox" checked={enabled} disabled={active}
           onChange={(event) => setEnabled(event.target.checked)} />
-        Goal-driven coding loop
+        Agent mode
       </label>
       {enabled && (
         <div className="goal-controls">
-          <p>Auto-applies reviewed edits to open/new files only. No publishing or test execution. Same-model review is not a guarantee of correctness.</p>
+          <p>Plans, searches, reads, edits and runs your page in a sandbox to check it, then applies reviewed edits to open/new files locally. It never publishes, and connector tools need your approval. Same-model review is not a guarantee of correctness.</p>
           <label>Goal
             <textarea aria-label="Loop goal" value={props.settings.goal} maxLength={2000}
               disabled={active || props.blocked} placeholder="Build a small calculator with accessible controls..."
