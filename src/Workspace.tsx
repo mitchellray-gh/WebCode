@@ -89,8 +89,10 @@ import { MAX_SESSION_BYTES } from "./session";
 import GoalPanel from "./GoalPanel";
 import Preview from "./Preview";
 import { defaultEntry, htmlFromReply, looksLikeHtml, previewPages, SNIPPET_PAGE } from "./sandbox";
-import { applyGoalEdit, goalResponseSchema } from "./goalLoop";
-import type { GoalCall, GoalEdit, GoalFiles, GoalSettings } from "./goalLoop";
+import { applyGoalEdit } from "./goalLoop";
+import type { GoalCall, GoalEdit, GoalFiles, GoalSettings, GoalTools } from "./goalLoop";
+import { searchWorkspace } from "./agentTools";
+import { checkPage } from "./pageCheck";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
 const isChanged = (file: OpenFile) =>
@@ -896,7 +898,7 @@ function App() {
         const now = Date.now();
         if (now - lastUpdate >= 100) { lastUpdate = now; update({ response: text }); }
       }, call.stage === "Draft" || call.stage === "Revise" ? "code" : "json",
-      assemblePrompt(prompt, emptyMemory()), goalResponseSchema(call.stage));
+      assemblePrompt(prompt, emptyMemory()), call.schema);
       signal.throwIfAborted();
       update({ response: answer.text, status: answer.finished ? "Complete" : "Output limit reached" });
       if (!answer.finished || !answer.text.trim())
@@ -912,6 +914,45 @@ function App() {
     }
   }
 
+  function logAgent(label: string, response: string, file = "") {
+    const id = nextId.current++;
+    setTranscript((previous) => [...previous, { id, request: `[Agent ${label}]`, response, file, status: "Done" }]);
+  }
+
+  const agentTools: GoalTools = {
+    async search(query) {
+      const { files: current, paths } = goalWorkspace.current;
+      let report = searchWorkspace(current, paths, query);
+      if (repo && token) {
+        try {
+          const found = (await new GitHub(token).searchCode(repo, query)).filter((path) => !Object.hasOwn(current, path));
+          if (found.length)
+            report = `${report}\nGitHub code search (not open; use read):\n${found.join("\n")}`;
+        } catch (failure) {
+          report = `${report}\n(GitHub code search unavailable: ${failureMessage(failure, "failed")})`;
+        }
+      }
+      logAgent("Search", `"${query}"\n${report}`);
+      return report;
+    },
+    read: repo ? async (path) => {
+      const entry = repo.files.find((file) => file.path === path);
+      if (!entry) throw new Error(`${path} is not in the repository.`);
+      const content = await new GitHub(token).read(repo, entry);
+      const workspace = goalWorkspace.current;
+      const next = { ...workspace.files, [path]: { original: content, content } };
+      goalWorkspace.current = { ...workspace, files: next };
+      setFiles(next);
+      logAgent("Read", `Opened ${path} from ${repo.owner}/${repo.name}.`, path);
+    } : undefined,
+    async check(focus) {
+      const contents = Object.fromEntries(Object.entries(goalWorkspace.current.files).map(([path, file]) => [path, file.content]));
+      const report = await checkPage(contents, focus);
+      logAgent("Check", report, focus);
+      return report;
+    },
+  };
+
   function applyGoal(edit: GoalEdit) {
     const workspace = goalWorkspace.current;
     const next = applyGoalEdit(workspace.files, workspace.paths, edit);
@@ -923,7 +964,7 @@ function App() {
     setActive(edit.path);
     setSelectedRange({ from: 0, to: 0 });
     const id = nextId.current++;
-    const response = `Applied ${edit.path} locally after model review. Not executed or tested. Nothing published.`;
+    const response = `Applied ${edit.path} locally after model review. Nothing published.`;
     setTranscript((previous) => [...previous, {
       id, request: "[Goal Apply]", response, file: edit.path, status: "Done",
     }]);
@@ -1821,7 +1862,7 @@ function App() {
         <div className="composer-area">
           <GoalPanel settings={goalSettings} change={setGoalSettings}
             ready={ready} blocked={busy || Boolean(proposal || review) || creating || connecting || publishing || skillsOpen}
-            workspace={() => goalWorkspace.current}
+            workspace={() => goalWorkspace.current} tools={agentTools}
             ask={askGoal} apply={applyGoal} running={(running) => {
               setGoalRunning(running);
               if (running) setError("");

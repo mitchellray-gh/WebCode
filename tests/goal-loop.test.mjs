@@ -170,6 +170,66 @@ test("repeated inspected files and cycling code states stop rather than spin", a
   assert.equal(cycling.state.files["app.ts"].content, "second");
 });
 
+const step = (action, path = "", summary = "Next step") => JSON.stringify({ action, path, summary });
+
+test("agent searches, reads a repository file, edits, sees page errors from an automatic check, and fixes them", async () => {
+  const checks = [];
+  const reads = [];
+  const { state, options } = harness([
+    step("search", "counter helper"),
+    (call) => { assert.match(call.request, /Search "counter helper":\nremote-only\.ts \(not open; use read\)/); return step("read", "remote-only.ts"); },
+    step("edit", "app.ts"), code("broken()"), review(),
+    (call) => { assert.match(call.request, /Page check: ReferenceError broken is not defined/); return step("edit", "app.ts"); },
+    code("fixed()"), review(),
+    (call) => { assert.match(call.request, /Page check: app\.ts ran cleanly/); return step("done", "", "Page runs cleanly"); },
+    (call) => { assert.match(call.request, /Page check: app\.ts ran cleanly/); return review(); },
+  ]);
+  options.tools = {
+    search: async () => "remote-only.ts (not open; use read)",
+    read: async (path) => { reads.push(path); state.files = { ...state.files, [path]: { original: "x", content: "x" } }; },
+    check: async (focus) => { checks.push(focus); return state.files["app.ts"].content.startsWith("broken") ? "ReferenceError broken is not defined" : "app.ts ran cleanly"; },
+  };
+  assert.equal(await runGoalLoop(options), "reported-complete");
+  assert.deepEqual(reads, ["remote-only.ts"]);
+  assert.deepEqual(checks, ["app.ts", "app.ts"]);
+  assert.equal(state.files["app.ts"].content, "fixed()");
+  assert.deepEqual(JSON.parse(state.calls[0].schema).properties.action.enum, ["inspect", "edit", "done", "search", "read", "check"]);
+  assert.match(state.calls[0].instruction, /search \(path = words/);
+});
+
+test("agent tool use is bounded and validated", async () => {
+  const tools = { search: async () => "none", read: async () => {}, check: async () => "ok" };
+  const repeat = harness([step("search", "Counter"), step("search", "counter")]);
+  repeat.options.tools = tools;
+  await assert.rejects(runGoalLoop(repeat.options), /repeated the same search/);
+  const missing = harness([step("read", "not-in-repo.ts")]);
+  missing.options.tools = tools;
+  await assert.rejects(runGoalLoop(missing.options), /not a repository path/);
+  const unavailable = harness([step("search", "x")]);
+  await assert.rejects(runGoalLoop(unavailable.options), /unsupported action/);
+  const idle = harness(Array.from({ length: 11 }, (_, index) => step("check", "", `Check ${index}`)));
+  idle.options.tools = tools;
+  await assert.rejects(runGoalLoop(idle.options), /10 read-only steps without making an edit/);
+  const open = harness([step("read", "app.ts"), step("done"), review()]);
+  open.options.tools = tools;
+  assert.equal(await runGoalLoop(open.options), "reported-complete");
+  assert.match(open.state.calls[1].request, /app\.ts is already open/);
+});
+
+test("a failing page check never blocks an applied edit, but a stop during the check does", async () => {
+  const failing = harness([step("edit", "app.ts"), code("new"), review(), (call, state) => {
+    assert.match(call.request, /Applied app\.ts locally[\s\S]*Page check could not run/);
+    state.pause = true;
+    return step("inspect", "app.ts");
+  }]);
+  failing.options.tools = { check: async () => { throw new Error("iframe blocked"); } };
+  assert.equal(await runGoalLoop(failing.options), "paused");
+  assert.equal(failing.state.files["app.ts"].content, "new");
+  const stopping = harness([step("edit", "app.ts"), code("next"), review()]);
+  stopping.options.tools = { check: async () => { stopping.state.abort.abort(); return "late"; } };
+  await assert.rejects(runGoalLoop(stopping.options), { name: "AbortError" });
+});
+
 test("continuous mode has no fixed iteration cap and pauses at a cycle boundary", async () => {
   const replies = [];
   for (let index = 0; index < 25; index++)

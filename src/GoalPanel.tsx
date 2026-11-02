@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { runGoalLoop } from "./goalLoop";
-import type { GoalCall, GoalEdit, GoalFiles, GoalInput, GoalSettings } from "./goalLoop";
+import type { GoalCall, GoalEdit, GoalFiles, GoalInput, GoalSettings, GoalTools } from "./goalLoop";
 
 export default function GoalPanel(props: {
   settings: GoalSettings;
@@ -8,6 +8,7 @@ export default function GoalPanel(props: {
   blocked: boolean;
   ready: boolean;
   workspace: () => { files: GoalFiles; paths: string[] };
+  tools?: GoalTools;
   ask: (call: GoalCall, signal: AbortSignal) => Promise<string>;
   apply: (edit: GoalEdit) => void;
   running: (running: boolean) => void;
@@ -36,6 +37,7 @@ export default function GoalPanel(props: {
       const result = await runGoalLoop({
         input: () => input.current,
         workspace: props.workspace,
+        tools: props.tools,
         ask: (call) => props.ask(call, controller.signal),
         apply: props.apply,
         signal: controller.signal,

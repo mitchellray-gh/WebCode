@@ -202,6 +202,19 @@ export class GitHub {
     };
   }
 
+  // GitHub code search always requires authentication; it finds files by content without downloading the repository.
+  async searchCode(repo: Pick<Repository, "owner" | "name">, query: string): Promise<string[]> {
+    if (!this.token) throw new Error("GitHub code search needs a token.");
+    const words = query.replace(/[^\w\s.-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+    if (!words) return [];
+    const result: unknown = await this.request(
+      `/search/code?q=${encodeURIComponent(`${words} repo:${repo.owner}/${repo.name}`)}&per_page=5`,
+    );
+    const items = (result as { items?: unknown }).items;
+    if (!Array.isArray(items)) throw new Error("GitHub returned an unexpected search response.");
+    return items.map((item: { path?: unknown }) => item.path).filter((path): path is string => typeof path === "string");
+  }
+
   async read(repo: Repository, file: RepoFile) {
     if (file.size && file.size > 512000)
       throw new Error("File exceeds the 500 KB editor limit.");

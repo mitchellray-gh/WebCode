@@ -1,3 +1,5 @@
+import { clip } from "./agentTools.ts";
+
 export const PREVIEW_CHANNEL = "technicalskills-preview";
 export type PreviewFiles = Record<string, string>;
 export type PreviewBuild = {
@@ -77,6 +79,24 @@ function withBridge(html: string) {
   if (/<html\b[^>]*>/i.test(html)) return html.replace(/<html\b[^>]*>/i, (open) => `${open}<head>${tag}</head>`);
   const doctype = /^\s*<!doctype[^>]*>/i.exec(html);
   return doctype ? doctype[0] + tag + html.slice(doctype[0].length) : tag + html;
+}
+
+/** One short report of how a page ran in the headless check, for the agent's next step. */
+export function formatCheck(
+  entry: string,
+  lines: { level: string; text: string }[],
+  build: { missing: string[]; warnings: string[] },
+) {
+  const errors = lines.filter((line) => line.level === "error").map((line) => line.text);
+  const problems: string[] = [];
+  if (errors.length) problems.push(`${errors.length} error(s): ${errors.slice(0, 3).join(" | ")}`);
+  if (build.missing.length) problems.push(`missing files: ${build.missing.join(", ")}`);
+  if (build.warnings.length) problems.push(`warnings: ${build.warnings.join(" ")}`);
+  if (!problems.length) {
+    const count = lines.length;
+    return `${entry} ran cleanly (${count} console line${count === 1 ? "" : "s"}).`;
+  }
+  return clip(`${entry}: ${problems.join("; ")}`, 650);
 }
 
 /** Inlines workspace stylesheets and scripts into one document. Nothing is fetched or executed here. */
