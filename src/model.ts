@@ -1,5 +1,6 @@
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { CONTEXT_WINDOW, OUTPUT_TOKENS } from "./context.ts";
+import { CONTEXT_WINDOW, OUTPUT_TOKENS, isCapabilityRefusal, INPUT_BYTE_BUDGET, promptBytes } from "./context.ts";
+import { extractCodeBlock } from "./commands.ts";
 import type { Message, Summarize } from "./context.ts";
 import { DEFAULT_MODEL_ID, modelChoice, modelSource } from "./models.ts";
 
@@ -168,6 +169,34 @@ export class BrowserModel {
       );
       return result.text;
     };
+  }
+
+  async completeTask(
+    messages: Message[],
+    signal: AbortSignal,
+    update: (text: string) => void,
+    format: "text" | "code" | "json",
+    cleanContext?: Message[],
+  ) {
+    const invalid = (text: string) => isCapabilityRefusal(text) ||
+      (format === "code" && extractCodeBlock(text) === null);
+    let answer = await this.complete(messages, signal, update);
+    if (!answer.finished || !invalid(answer.text)) return answer;
+    update("");
+    const last = (cleanContext ?? messages).at(-1);
+    const system = (cleanContext ?? messages)[0];
+    if (!last || !system || last.role !== "user" || system.role !== "system")
+      throw new Error("Cannot retry an invalid coding response: missing task context.");
+    const retry: Message[] = [
+      system,
+      { role: "user", content: `${last.content}\n\nWrite the requested source code now.${format === "code" ? " Return one complete fenced code block." : format === "json" ? " Follow the required JSON schema." : ""} Code generation does not require professional credentials or executing the app.` },
+    ];
+    if (promptBytes(retry) > INPUT_BYTE_BUDGET)
+      throw new Error("Model refused or returned invalid code. Retry needs more context space; shorten the request or select less code.");
+    answer = await this.complete(retry, signal, update);
+    if (invalid(answer.text))
+      throw new Error("Model returned a capability refusal or invalid code after one clean-context retry. Nothing was staged or applied. Try a narrower request or a larger coding model.");
+    return answer;
   }
 
   dispose() {

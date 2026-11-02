@@ -73,3 +73,52 @@ test("summary instructions do not turn assistant capability refusals into user c
     "User: write a calculator. Assistant: I cannot write code.", 128),
   "Goal: write a calculator.");
 });
+
+  test("coding tasks retry a fenced refusal without conversational history", async () => {
+    const model = new BrowserModel();
+    const calls = [];
+    model.complete = async (messages) => {
+      calls.push(messages);
+      return { text: calls.length === 1
+        ? "```\nI can't build a calculator app for you as I'm not a professional.\n```"
+        : "```html\n<button>Add</button>\n```", finished: true };
+    };
+    const messages = [
+      { role: "system", content: "Write source code. Protected requirements." },
+      { role: "user", content: "Older task" },
+      { role: "assistant", content: "Older refusal" },
+      { role: "user", content: "Current file: empty. Build a calculator." },
+    ];
+    const clean = [
+      { role: "system", content: "Write source code. Protected requirements." },
+      messages.at(-1),
+    ];
+    messages[0] = { role: "system", content: `${clean[0].content}\nHistorical notes: cannot build apps.` };
+    const result = await model.completeTask(messages, new AbortController().signal, () => {}, "code", clean);
+    assert.match(result.text, /<button>/);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].length, 2);
+    assert.equal(calls[1][0], clean[0]);
+    assert.doesNotMatch(calls[1][0].content, /Historical notes/);
+    assert.match(calls[1][1].content, /Current file: empty. Build a calculator/);
+    assert.doesNotMatch(JSON.stringify(calls[1]), /Older refusal/);
+  });
+
+  test("repeated refusals fail explicitly and retries respect budget and truncation", async () => {
+    const model = new BrowserModel();
+    let calls = 0;
+    model.complete = async () => {
+      calls++;
+      return { text: "I cannot build apps for you.", finished: true };
+    };
+    const messages = [{ role: "system", content: "Write code." }, { role: "user", content: "Build an app." }];
+    await assert.rejects(model.completeTask(messages, new AbortController().signal, () => {}, "code"), /Nothing was staged or applied/);
+    assert.equal(calls, 2);
+    calls = 0;
+    await assert.rejects(model.completeTask([
+      messages[0], { role: "user", content: "x".repeat(2800) },
+    ], new AbortController().signal, () => {}, "code"), /more context space/);
+    assert.equal(calls, 1);
+    model.complete = async () => ({ text: "```html\nunfinished", finished: false });
+    assert.equal((await model.completeTask(messages, new AbortController().signal, () => {}, "code")).finished, false);
+  });

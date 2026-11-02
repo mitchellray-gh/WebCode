@@ -828,10 +828,11 @@ function App() {
       setPhase("thinking");
       update({ status: "Generating" });
       let lastUpdate = 0;
-      const answer = await instance.complete(prepared.messages, signal, (text) => {
+      const answer = await instance.completeTask(prepared.messages, signal, (text) => {
         const now = Date.now();
         if (now - lastUpdate >= 100) { lastUpdate = now; update({ response: text }); }
-      });
+      }, call.stage === "Draft" || call.stage === "Revise" ? "code" : "json",
+      assemblePrompt(prompt, emptyMemory()));
       signal.throwIfAborted();
       update({ response: answer.text, status: answer.finished ? "Complete" : "Output limit reached" });
       if (!answer.finished || !answer.text.trim())
@@ -928,7 +929,7 @@ function App() {
       setPhase("thinking");
       updateTurn({ status: "Generating" });
       let lastStreamUpdate = 0;
-      const answer = await instance.complete(
+      const answer = await instance.completeTask(
         prepared.messages,
         abort.signal,
         (text) => {
@@ -938,6 +939,8 @@ function App() {
             updateTurn({ response: text });
           }
         },
+        mode === "edit" ? "code" : "text",
+        assemblePrompt(promptInput, emptyMemory()),
       );
       if (!answer.text.trim())
         throw new Error(

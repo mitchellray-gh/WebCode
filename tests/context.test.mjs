@@ -6,6 +6,7 @@ import {
   bytes,
   compactMemory,
   codingInstruction,
+  isCapabilityRefusal,
   ContextBudgetError,
   emptyMemory,
   levelBudget,
@@ -28,6 +29,17 @@ const input = {
   fileContext: "main.ts\nlet value = 2",
   request: "Explain the current code exactly.",
 };
+
+test("capability refusals, including fenced prose, are excluded from model history only", () => {
+  const refusal = "```\nI can't build a calculator app for you as I'm not a professional and do not have the capability to create a calculator app.\n```";
+  assert.equal(isCapabilityRefusal(refusal), true);
+  assert.equal(isCapabilityRefusal("I do not have the capability to create apps."), true);
+  assert.equal(isCapabilityRefusal('```js\nconst message = "I can\\\'t build apps";\n```'), false);
+  assert.equal(isCapabilityRefusal("I cannot run tests here, but here is the code."), false);
+  const memory = appendExchange(emptyMemory(), { id: 1, request: "Build a calculator", response: refusal });
+  assert.equal(assemblePrompt(input, memory).length, 2);
+  assert.equal(memory.recent.length, 1);
+});
 
 test("both chat modes affirm code generation despite earlier refusal history", async () => {
   const memory = appendExchange(emptyMemory(), {

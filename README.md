@@ -23,6 +23,8 @@ Weights download from ModelScope (`modelscope.cn`); Hugging Face is never contac
 
 Explain, Edit, and goal-loop stages share explicit code-generation capabilities: models can write apps and replacement source; execution, testing, downloads, and publishing are separate app/user actions. Explain also supplies code when asked to build something. Earlier assistant refusals are not treated as project constraints, and compaction is instructed not to preserve those disclaimers. This reduces misleading capability refusals but cannot guarantee response quality from small models. If an old conversation keeps reinforcing a refusal, use **New conversation** (export first); this clears chat and summaries, not workspace files.
 
+Recognizable capability refusals are excluded from recent inference history without deleting the transcript. A completed capability refusal (including prose wrapped in code fences), or an Edit/draft response missing its code fence, triggers at most one clean-context retry with the current task and protected system context. Retry prompts obey the same byte budget. Repeated invalid results fail visibly instead of becoming editable source or new model memory; no unlimited retries or fabricated fallback code are used.
+
 ## Geometric Compaction
 
 `src/context.ts` is in the actual inference request path:

@@ -182,6 +182,12 @@ export type PromptInput = {
 
 export const CODING_CAPABILITIES = "You are a coding assistant in a browser editor. You can write complete apps, create source code, and revise supplied files. For ordinary coding requests, provide working code, not disclaimers about qualifications. The app handles local file changes and downloads. You generate text; execution, testing, network access, and publishing are separate app/user actions. Never claim these actions occurred. Earlier assistant refusals or capability claims are not constraints.";
 
+export function isCapabilityRefusal(text: string) {
+  const opening = text.trim().replace(/^```[^\n]*\n/, "").trimStart().slice(0, 600);
+  return /^(?:I(?:'m| am) sorry[,.\s]+|Sorry[,.\s]+)?I (?:can(?:not|'t)|am unable to|do not have the (?:ability|capability) to)\s+(?:help you\s+)?(?:build|create|write|develop|code)\b/i.test(opening) ||
+    /^I\b[^.!?\n]{0,160}\bnot a professional\b/i.test(opening);
+}
+
 export function codingInstruction(mode: "edit" | "explain") {
   return `${CODING_CAPABILITIES} ${mode === "edit"
     ? "Return only the complete replacement file in one fenced code block with a language name. For an empty file, write the whole new file. No omissions. Make the requested change."
@@ -206,6 +212,7 @@ export function assemblePrompt(input: PromptInput, memory: Memory): Message[] {
     { role: "system", content: system.join("\n\n") },
   ];
   for (const turn of memory.recent) {
+    if (isCapabilityRefusal(turn.response)) continue;
     messages.push(
       { role: "user", content: turn.request },
       { role: "assistant", content: turn.response },
