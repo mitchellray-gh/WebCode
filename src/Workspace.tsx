@@ -394,7 +394,8 @@ function App() {
     setActive(saved.active);
     setTranscript(saved.transcript.map((turn) => ({
       ...turn,
-      status: ["Preparing context", "Generating"].includes(turn.status) ? "Interrupted" : turn.status,
+      status: ["Preparing context", "Generating"].includes(turn.status) || turn.status.startsWith("Compacting history")
+        ? "Interrupted" : turn.status,
     })));
     remember(saved.memory);
     setPinned(saved.pinned);
@@ -820,13 +821,17 @@ function App() {
     setPhase("compacting");
     try {
       const prepared = await preparePrompt(prompt, contextMemory,
-        measureSummarizer(instance.summarizer(signal), measurement));
+        measureSummarizer(instance.summarizer(signal), measurement, (stats) => {
+          setStats(stats);
+          update({ status: `Compacting history · summary ${stats.calls}`, response:
+            `Summarizing older conversation locally before ${call.stage.toLowerCase()}. ${Math.round(stats.milliseconds / 1000)}s of summarization so far. Stop now cancels without applying this step.` });
+        }));
       signal.throwIfAborted();
       if (!reviewing) remember(prepared.memory);
       measurement.afterBytes = prepared.inputBytes;
       setLiveBytes(prepared.inputBytes);
       setPhase("thinking");
-      update({ status: "Generating" });
+      update({ status: "Generating", response: "" });
       let lastUpdate = 0;
       const answer = await instance.completeTask(prepared.messages, signal, (text) => {
         const now = Date.now();
@@ -920,14 +925,18 @@ function App() {
       const prepared = await preparePrompt(
         promptInput,
         memoryRef.current,
-        measureSummarizer(instance.summarizer(abort.signal), measurement),
+        measureSummarizer(instance.summarizer(abort.signal), measurement, (stats) => {
+          setStats(stats);
+          updateTurn({ status: `Compacting history · summary ${stats.calls}`, response:
+            `Summarizing older conversation locally before answering. ${Math.round(stats.milliseconds / 1000)}s of summarization so far. Stop generation cancels; your files and original history are retained.` });
+        }),
       );
       measurement.afterBytes = prepared.inputBytes;
       abort.signal.throwIfAborted();
       remember(prepared.memory);
       setLiveBytes(prepared.inputBytes);
       setPhase("thinking");
-      updateTurn({ status: "Generating" });
+      updateTurn({ status: "Generating", response: "" });
       let lastStreamUpdate = 0;
       const answer = await instance.completeTask(
         prepared.messages,

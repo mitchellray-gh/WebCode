@@ -70,10 +70,17 @@ test("project notes stay verbatim and cannot bypass the protected input budget",
 
 test("compaction telemetry counts actual calls including failures", async () => {
   const stats = emptyCompactionStats();
-  const measured = measureSummarizer(async () => { throw new Error("GPU lost"); }, stats);
+  const progress = [];
+  const measured = measureSummarizer(async () => { throw new Error("GPU lost"); }, stats,
+    (value) => progress.push(value));
   await assert.rejects(measured("source", 100), /GPU lost/);
   assert.equal(stats.calls, 1);
   assert.ok(stats.milliseconds >= 0);
+  assert.equal(progress.length, 2);
+  assert.equal(progress[0].calls, 1);
+  assert.equal(progress[0].milliseconds, 0);
+  assert.equal(progress[1].milliseconds, stats.milliseconds);
+  assert.notEqual(progress[0], stats);
 });
 
 test("explicit compaction maintains a logarithmic binary hierarchy", async () => {

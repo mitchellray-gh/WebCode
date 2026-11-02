@@ -20,12 +20,20 @@ export type CompactionStats = {
 export const emptyCompactionStats = (): CompactionStats => ({
   calls: 0, milliseconds: 0, beforeBytes: 0, afterBytes: 0,
 });
-export function measureSummarizer(summarize: Summarize, stats: CompactionStats): Summarize {
+export function measureSummarizer(
+  summarize: Summarize,
+  stats: CompactionStats,
+  progress?: (stats: CompactionStats) => void,
+): Summarize {
   return async (source, budget) => {
     stats.calls++;
+    progress?.({ ...stats });
     const start = performance.now();
     try { return await summarize(source, budget); }
-    finally { stats.milliseconds += performance.now() - start; }
+    finally {
+      stats.milliseconds += performance.now() - start;
+      progress?.({ ...stats });
+    }
   };
 }
 export const memoryBytes = (memory: Memory) =>
