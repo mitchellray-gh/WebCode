@@ -9,8 +9,29 @@ export type GoalStage = "Plan" | "Draft" | "Review" | "Revise" | "Inspect" | "Ap
 export type GoalCall = { stage: GoalStage; instruction: string; request: string; fileContext: string };
 export type GoalEdit = { path: string; base: string | null; next: string };
 
+export function goalResponseSchema(stage: GoalStage): string | undefined {
+  if (stage === "Plan") return JSON.stringify({
+    type: "object", properties: {
+      action: { type: "string", enum: ["inspect", "edit", "done"] },
+      path: { type: "string" }, summary: { type: "string" },
+    }, required: ["action", "path", "summary"], additionalProperties: false,
+  });
+  if (stage === "Review" || stage === "Completion review") return JSON.stringify({
+    type: "object", properties: {
+      verdict: { type: "string", enum: ["pass", "revise"] },
+      feedback: { type: "string" },
+    }, required: ["verdict", "feedback"], additionalProperties: false,
+  });
+}
+
 function record(text: string): Record<string, unknown> {
-  const value: unknown = JSON.parse(extractCodeBlock(text) ?? text);
+  let value: unknown;
+  try {
+    value = JSON.parse(extractCodeBlock(text) ?? text);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new Error("Goal mode received source code or malformed JSON instead of a plan/review. This step was not applied; restart to retry.");
+  }
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Goal mode expected a JSON object. No changes were applied.");
   return value as Record<string, unknown>;

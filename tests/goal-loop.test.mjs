@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyGoalEdit, runGoalLoop } from "../src/goalLoop.ts";
+import { applyGoalEdit, runGoalLoop, goalResponseSchema } from "../src/goalLoop.ts";
 
 const plan = (path = "app.ts", summary = "Implement the next step") =>
   JSON.stringify({ action: "edit", path, summary });
@@ -106,11 +106,24 @@ test("unsafe paths, unopened remote paths, malformed reviews and no-op edits sto
     [[plan(), code("old")], /no change/],
     [[plan(), "unfinished draft"], /single code block/],
     [[done, review("revise", "Missing work")], /Completion review rejected/],
+    [["import * as app from './app';"], /malformed JSON instead of a plan\/review/],
   ]) {
     const { state, options } = harness(responses);
     await assert.rejects(runGoalLoop(options), error);
     assert.equal(state.applied.length, 0);
   }
+});
+
+test("goal schemas constrain planning and review but never source-code drafts", () => {
+  const planSchema = JSON.parse(goalResponseSchema("Plan"));
+  assert.deepEqual(planSchema.properties.action.enum, ["inspect", "edit", "done"]);
+  for (const stage of ["Review", "Completion review"]) {
+    const schema = JSON.parse(goalResponseSchema(stage));
+    assert.deepEqual(schema.properties.verdict.enum, ["pass", "revise"]);
+    assert.deepEqual(schema.required, ["verdict", "feedback"]);
+  }
+  assert.equal(goalResponseSchema("Draft"), undefined);
+  assert.equal(goalResponseSchema("Revise"), undefined);
 });
 
 test("new files can be created, inspected and used in subsequent cycles", async () => {

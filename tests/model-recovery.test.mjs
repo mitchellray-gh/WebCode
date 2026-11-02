@@ -59,6 +59,41 @@ test("the no-progress watchdog releases a hung model after 120 seconds", async (
   assert.equal(worker.terminated, true);
 });
 
+test("JSON schemas reach the inference engine, while normal source output is unconstrained", async () => {
+  const requests = [];
+  const { model } = modelWith({
+    resetChat: async () => {},
+    chat: { completions: { create: async function* (request) {
+      requests.push(request);
+      yield { choices: [{ delta: { content: '{"verdict":"pass","feedback":"ok"}' }, finish_reason: "stop" }] };
+    } } },
+  });
+  const messages = [{ role: "system", content: "Return JSON." }, { role: "user", content: "Review." }];
+  const schema = '{"type":"object","properties":{"verdict":{"type":"string"}}}';
+  await model.completeTask(messages, new AbortController().signal, () => {}, "json", messages, schema);
+  assert.deepEqual(requests[0].response_format, { type: "json_object", schema });
+  await model.complete(messages, new AbortController().signal, () => {});
+  assert.equal(requests[1].response_format, undefined);
+});
+
+test("source returned for a JSON stage gets a JSON-specific retry and bounded failure", async () => {
+  const model = new BrowserModel();
+  const messages = [{ role: "system", content: "Return a JSON plan." }, { role: "user", content: "Build a calculator." }];
+  let count = 0;
+  model.complete = async (prompt, _signal, _update, _tokens, schema) => {
+    assert.equal(JSON.parse(schema).type, "object");
+    if (++count === 1) return { text: "import * as app from './app';", finished: true };
+    assert.match(prompt.at(-1).content, /do not write source code or Markdown/);
+    assert.doesNotMatch(prompt.at(-1).content, /Write the requested source code now/);
+    return { text: '{"action":"edit","path":"index.html","summary":"Build calculator"}', finished: true };
+  };
+  assert.match((await model.completeTask(messages, new AbortController().signal, () => {}, "json")).text, /index.html/);
+  count = 0;
+  model.complete = async () => { count++; return { text: "import app;", finished: true }; };
+  await assert.rejects(model.completeTask(messages, new AbortController().signal, () => {}, "json"), /invalid response format/);
+  assert.equal(count, 2);
+});
+
 test("summary instructions do not turn assistant capability refusals into user constraints", async () => {
   const { model } = modelWith({
     resetChat: async () => {},

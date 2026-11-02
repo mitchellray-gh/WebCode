@@ -94,6 +94,7 @@ export class BrowserModel {
     signal: AbortSignal,
     update: (text: string) => void,
     maxTokens = OUTPUT_TOKENS,
+    jsonSchema?: string,
   ) {
     const engine = this.engine;
     const worker = this.worker;
@@ -123,6 +124,9 @@ export class BrowserModel {
           stream: true,
           max_tokens: maxTokens,
           temperature: 0.2,
+          ...(jsonSchema === undefined ? {} : {
+            response_format: { type: "json_object" as const, schema: jsonSchema },
+          }),
         });
         let text = "";
         let finished = false;
@@ -177,10 +181,22 @@ export class BrowserModel {
     update: (text: string) => void,
     format: "text" | "code" | "json",
     cleanContext?: Message[],
+    jsonSchema?: string,
   ) {
+    const invalidJson = (text: string) => {
+      try {
+        const value: unknown = JSON.parse(text);
+        return !value || typeof value !== "object" || Array.isArray(value);
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        return true;
+      }
+    };
     const invalid = (text: string) => isCapabilityRefusal(text) ||
-      (format === "code" && extractCodeBlock(text) === null);
-    let answer = await this.complete(messages, signal, update);
+      (format === "code" && extractCodeBlock(text) === null) ||
+      (format === "json" && invalidJson(text));
+    const schema = format === "json" ? jsonSchema ?? '{"type":"object"}' : undefined;
+    let answer = await this.complete(messages, signal, update, OUTPUT_TOKENS, schema);
     if (!answer.finished || !invalid(answer.text)) return answer;
     update("");
     const last = (cleanContext ?? messages).at(-1);
@@ -189,13 +205,15 @@ export class BrowserModel {
       throw new Error("Cannot retry an invalid coding response: missing task context.");
     const retry: Message[] = [
       system,
-      { role: "user", content: `${last.content}\n\nWrite the requested source code now.${format === "code" ? " Return one complete fenced code block." : format === "json" ? " Follow the required JSON schema." : ""} Code generation does not require professional credentials or executing the app.` },
+      { role: "user", content: `${last.content}\n\n${format === "json"
+        ? "Return only the requested JSON object. Follow the system schema; do not write source code or Markdown."
+        : `Write the requested source code now.${format === "code" ? " Return one complete fenced code block." : ""} Code generation does not require professional credentials or executing the app.`}` },
     ];
     if (promptBytes(retry) > INPUT_BYTE_BUDGET)
       throw new Error("Model refused or returned invalid code. Retry needs more context space; shorten the request or select less code.");
-    answer = await this.complete(retry, signal, update);
+    answer = await this.complete(retry, signal, update, OUTPUT_TOKENS, schema);
     if (invalid(answer.text))
-      throw new Error("Model returned a capability refusal or invalid code after one clean-context retry. Nothing was staged or applied. Try a narrower request or a larger coding model.");
+      throw new Error("Model returned a capability refusal or invalid response format after one clean-context retry. Nothing was staged or applied. Try a narrower request or a larger coding model.");
     return answer;
   }
 

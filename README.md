@@ -25,6 +25,8 @@ Explain, Edit, and goal-loop stages share explicit code-generation capabilities:
 
 Recognizable capability refusals are excluded from recent inference history without deleting the transcript. A completed capability refusal (including prose wrapped in code fences), or an Edit/draft response missing its code fence, triggers at most one clean-context retry with the current task and protected system context. Retry prompts obey the same byte budget. Repeated invalid results fail visibly instead of becoming editable source or new model memory; no unlimited retries or fabricated fallback code are used.
 
+Goal planning and review use WebLLM's schema-constrained JSON output, not prompt instructions alone. Plans constrain actions to inspect/edit/done; reviews constrain verdicts to pass/revise. Draft/revision stages still generate source code. Malformed JSON gets one JSON-specific clean-context retry and then a readable error; source code is never interpreted as an approved plan or review.
+
 ## Geometric Compaction
 
 `src/context.ts` is in the actual inference request path:

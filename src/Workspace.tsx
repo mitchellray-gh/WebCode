@@ -85,7 +85,7 @@ import { recoverySession } from "./recovery";
 import type { Proposal, Session, TranscriptTurn } from "./session";
 import { MAX_SESSION_BYTES } from "./session";
 import GoalPanel from "./GoalPanel";
-import { applyGoalEdit } from "./goalLoop";
+import { applyGoalEdit, goalResponseSchema } from "./goalLoop";
 import type { GoalCall, GoalEdit, GoalFiles, GoalSettings } from "./goalLoop";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
@@ -832,7 +832,7 @@ function App() {
         const now = Date.now();
         if (now - lastUpdate >= 100) { lastUpdate = now; update({ response: text }); }
       }, call.stage === "Draft" || call.stage === "Revise" ? "code" : "json",
-      assemblePrompt(prompt, emptyMemory()));
+      assemblePrompt(prompt, emptyMemory()), goalResponseSchema(call.stage));
       signal.throwIfAborted();
       update({ response: answer.text, status: answer.finished ? "Complete" : "Output limit reached" });
       if (!answer.finished || !answer.text.trim())
