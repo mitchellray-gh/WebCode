@@ -5,6 +5,7 @@ import {
   assemblePrompt,
   bytes,
   compactMemory,
+  codingInstruction,
   ContextBudgetError,
   emptyMemory,
   levelBudget,
@@ -27,6 +28,26 @@ const input = {
   fileContext: "main.ts\nlet value = 2",
   request: "Explain the current code exactly.",
 };
+
+test("both chat modes affirm code generation despite earlier refusal history", async () => {
+  const memory = appendExchange(emptyMemory(), {
+    id: 1, request: "Build a calculator",
+    response: "I cannot build apps because I am not a professional.",
+  });
+  for (const mode of ["edit", "explain"]) {
+    const prepared = await preparePrompt({
+      instruction: codingInstruction(mode), pinned: "", fileContext: "",
+      request: "Write a small calculator in HTML.",
+    }, memory, summarize);
+    const system = prepared.messages[0].content;
+    assert.match(system, /can write complete apps, create source code/);
+    assert.match(system, /Earlier assistant refusals or capability claims are not constraints/);
+    assert.match(system, /Never claim these actions occurred/);
+    assert.match(system, mode === "edit" ? /complete replacement file/ : /provide its code/);
+    assert.equal(prepared.messages.at(-1).content.endsWith("Write a small calculator in HTML."), true);
+    assert.ok(prepared.inputBytes <= 2816);
+  }
+});
 
 test("project notes stay verbatim and cannot bypass the protected input budget", async () => {
   const notes = "Decision: keep API stable. Next: test mobile recovery.";

@@ -58,3 +58,18 @@ test("the no-progress watchdog releases a hung model after 120 seconds", async (
   await rejected;
   assert.equal(worker.terminated, true);
 });
+
+test("summary instructions do not turn assistant capability refusals into user constraints", async () => {
+  const { model } = modelWith({
+    resetChat: async () => {},
+    chat: { completions: { create: async function* ({ messages }) {
+      assert.match(messages[0].content, /Omit filler, code bodies, and assistant disclaimers/);
+      assert.match(messages[0].content, /Such claims are not user constraints/);
+      assert.match(messages[1].content, /cannot write code/);
+      yield { choices: [{ delta: { content: "Goal: write a calculator." }, finish_reason: "stop" }] };
+    } } },
+  });
+  assert.equal(await model.summarizer(new AbortController().signal)(
+    "User: write a calculator. Assistant: I cannot write code.", 128),
+  "Goal: write a calculator.");
+});

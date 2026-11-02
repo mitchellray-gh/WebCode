@@ -46,6 +46,10 @@ test("plans, drafts, reviews, applies locally, then separately reviews completio
   assert.equal(state.files["app.ts"].content, "new");
   assert.equal(state.files["app.ts"].original, "old");
   assert.equal(state.applied.length, 1);
+  for (const call of state.calls) {
+    assert.match(call.instruction, /can write complete apps, create source code/);
+    assert.match(call.instruction, /Never claim these actions occurred/);
+  }
   assert.match(state.calls[2].fileContext, /Original:\nold\nProposed:\nnew/);
 });
 

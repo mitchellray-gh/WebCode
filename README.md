@@ -21,6 +21,8 @@ Llama 3.2 1B Instruct (`Llama-3.2-1B-Instruct-q4f32_1-MLC`) is the default on de
 
 Weights download from ModelScope (`modelscope.cn`); Hugging Face is never contacted. The WebAssembly runtime comes from `raw.githubusercontent.com`. Code and requests go to the local inference worker, not a hosted AI endpoint. Fonts load from Google Fonts, with local fallbacks. Respect the Llama license and acceptable-use policy when redistributing. The WebLLM runtime is several MB and is loaded on demand, separate from model weights.
 
+Explain, Edit, and goal-loop stages share explicit code-generation capabilities: models can write apps and replacement source; execution, testing, downloads, and publishing are separate app/user actions. Explain also supplies code when asked to build something. Earlier assistant refusals are not treated as project constraints, and compaction is instructed not to preserve those disclaimers. This reduces misleading capability refusals but cannot guarantee response quality from small models. If an old conversation keeps reinforcing a refusal, use **New conversation** (export first); this clears chat and summaries, not workspace files.
+
 ## Geometric Compaction
 
 `src/context.ts` is in the actual inference request path:
