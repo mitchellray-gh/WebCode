@@ -230,6 +230,17 @@ test("a failing page check never blocks an applied edit, but a stop during the c
   await assert.rejects(runGoalLoop(stopping.options), { name: "AbortError" });
 });
 
+test("a space hint reaches the planner but never replaces the goal", async () => {
+  const { state, options } = harness([(call) => {
+    assert.match(call.request, /Space "API" files to focus on[\s\S]*src\/api\.ts/);
+    assert.match(call.request, /^Goal:\nBuild a counter/);
+    state.pause = true;
+    return step("inspect", "app.ts");
+  }]);
+  options.hint = () => 'Space "API" files to focus on (open or read them when needed):\nsrc/api.ts';
+  assert.equal(await runGoalLoop(options), "paused");
+});
+
 test("continuous mode has no fixed iteration cap and pauses at a cycle boundary", async () => {
   const replies = [];
   for (let index = 0; index < 25; index++)

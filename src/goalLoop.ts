@@ -97,6 +97,7 @@ export async function runGoalLoop(options: {
   pauseRequested: () => boolean;
   signal: AbortSignal;
   tools?: GoalTools;
+  hint?: () => string;
   wait?: (signal: AbortSignal) => Promise<void>;
 }): Promise<"paused" | "reported-complete"> {
   let focus = "";
@@ -124,6 +125,7 @@ export async function runGoalLoop(options: {
     const workspace = options.workspace();
     const inventory = Object.keys(workspace.files).join("\n");
     const unopened = workspace.paths.filter((path) => !Object.hasOwn(workspace.files, path)).length;
+    const spaceHint = options.hint?.() ?? "";
     const context = focus && Object.hasOwn(workspace.files, focus)
       ? `File ${focus}:\n${workspace.files[focus].content}` : "";
     const changed = () => options.input().revision !== input.revision;
@@ -139,7 +141,7 @@ export async function runGoalLoop(options: {
     };
     const plan = record(await ask("Plan",
       `Return only JSON like {"action":"edit","path":"src/file.ts","summary":"brief next step"}. The action must be one of: ${guide}. Choose one focused step. Inspect existing files before deciding what they need. Edit only open files or create a new file. If the last step reported page errors, fix them before finishing. Use done only when the goal appears met; never invent verification.`,
-      `Open file paths:\n${inventory || "(empty)"}${unopened ? `\n(${unopened} more repository/new paths are not open)` : ""}\nLast step:\n${lastResult || "(none)"}`, context));
+      `Open file paths:\n${inventory || "(empty)"}${unopened ? `\n(${unopened} more repository/new paths are not open)` : ""}${spaceHint ? `\n${clip(spaceHint, 500)}` : ""}\nLast step:\n${lastResult || "(none)"}`, context));
     if (changed()) continue;
     const summary = field(plan.summary, "plan summary", 600);
     if (plan.action === "done") {

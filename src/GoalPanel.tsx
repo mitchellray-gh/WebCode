@@ -9,6 +9,7 @@ export default function GoalPanel(props: {
   ready: boolean;
   workspace: () => { files: GoalFiles; paths: string[] };
   tools?: GoalTools;
+  hint?: () => string;
   ask: (call: GoalCall, signal: AbortSignal) => Promise<string>;
   apply: (edit: GoalEdit) => void;
   running: (running: boolean) => void;
@@ -38,6 +39,7 @@ export default function GoalPanel(props: {
         input: () => input.current,
         workspace: props.workspace,
         tools: props.tools,
+        hint: props.hint,
         ask: (call) => props.ask(call, controller.signal),
         apply: props.apply,
         signal: controller.signal,

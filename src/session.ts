@@ -2,6 +2,8 @@ import { validateNewPath } from "./github.ts";
 import { modelChoice } from "./models.ts";
 import type { Memory } from "./context.ts";
 import type { GoalSettings } from "./goalLoop.ts";
+import { readSpaces } from "./spaces.ts";
+import type { SpacesState } from "./spaces.ts";
 
 export type TranscriptTurn = {
   id: number;
@@ -30,6 +32,7 @@ export type Session = {
   model: string;
   proposal: Proposal | null;
   goalLoop?: GoalSettings;
+  spaces?: SpacesState;
 };
 export const MAX_SESSION_BYTES = 3_000_000;
 
@@ -123,5 +126,6 @@ export function readSession(value: unknown): Session {
         steering: text(object(data.goalLoop).steering, 1000),
       },
     }),
+    ...(data.spaces === undefined ? {} : { spaces: readSpaces(data.spaces) }),
   };
 }

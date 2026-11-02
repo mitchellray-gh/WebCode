@@ -93,6 +93,9 @@ import { applyGoalEdit } from "./goalLoop";
 import type { GoalCall, GoalEdit, GoalFiles, GoalSettings, GoalTools } from "./goalLoop";
 import { searchWorkspace } from "./agentTools";
 import { checkPage } from "./pageCheck";
+import SpacePanel from "./SpacePanel";
+import { EMPTY_SPACES, spaceContext } from "./spaces";
+import type { SpacesState } from "./spaces";
 import { REVIEW_INSTRUCTION, REVIEW_SCHEMA, reviewPullRequest } from "./prReview";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
@@ -284,6 +287,9 @@ function App() {
   const [pendingReview, setPendingReview] = useState<{ number: number; markdown: string } | null>(null);
   const [request, setRequest] = useState("");
   const [pinned, setPinned] = useState("");
+  const [spaces, setSpaces] = useState<SpacesState>(EMPTY_SPACES);
+  const spaceInfo = spaceContext(spaces);
+  const effectivePinned = [pinned, spaceInfo.requirements].filter(Boolean).join("\n\n");
   const [notes, setNotes] = useState("");
   const [goalSettings, setGoalSettings] = useState<GoalSettings>({ goal: "", steering: "" });
   const [goalRunning, setGoalRunning] = useState(false);
@@ -316,8 +322,9 @@ function App() {
     version: 1,
     files: Object.fromEntries(Object.entries(files).map(([path, file]) => [path, { content: file.content }])),
     active, transcript, memory, pinned, notes, request, mode, goalLoop: goalSettings,
+    ...(spaces.spaces.length ? { spaces } : {}),
     model: selectedModelId, proposal,
-  }), [files, active, transcript, memory, pinned, notes, request, mode, selectedModelId, proposal, goalSettings]);
+  }), [files, active, transcript, memory, pinned, notes, request, mode, selectedModelId, proposal, goalSettings, spaces]);
   const latestSession = useRef(session);
   const lastSavedSession = useRef<Session | null>(null);
   useEffect(() => { latestSession.current = session; }, [session]);
@@ -413,6 +420,7 @@ function App() {
     setPinned(saved.pinned);
     setNotes(saved.notes);
     setGoalSettings(saved.goalLoop ?? { goal: "", steering: "" });
+    setSpaces(saved.spaces ?? EMPTY_SPACES);
     setRequest(saved.request);
     setMode(saved.mode);
     setSelectedModelId(saved.model);
@@ -599,6 +607,7 @@ function App() {
       setPinned("");
       setNotes("");
       setGoalSettings({ goal: "", steering: "" });
+      setSpaces(EMPTY_SPACES);
       setRequest("");
       setNotice(
         `${created ? "Created README.md and opened" : "Opened"} ${repository.owner}/${repository.name} at ${repository.head.slice(0, 7)}.`,
@@ -948,7 +957,7 @@ function App() {
     const measurement = emptyCompactionStats();
     const prompt = {
       instruction: call.instruction, request: task, fileContext: call.fileContext,
-      pinned, notes, skills: skillText,
+      pinned: effectivePinned, notes, skills: skillText,
     };
     const reviewing = call.stage === "Review" || call.stage === "Completion review" || call.stage === "PR review";
     const contextMemory = reviewing ? emptyMemory() : memoryRef.current;
@@ -1088,7 +1097,7 @@ function App() {
       );
     const measurement = emptyCompactionStats();
     const promptInput = {
-      instruction, pinned, notes, request: task,
+      instruction, pinned: effectivePinned, notes, request: task,
       fileContext: currentContext(), skills: skillText,
     };
     measurement.beforeBytes = promptBytes(assemblePrompt(promptInput, memoryRef.current));
@@ -1340,7 +1349,7 @@ function App() {
     assemblePrompt(
       {
         instruction,
-        pinned,
+        pinned: effectivePinned,
         notes,
         fileContext: currentContext(),
         request,
@@ -1360,6 +1369,7 @@ function App() {
           pinned,
           notes,
           goalLoop: goalSettings,
+          spaces,
           skills: attachedSkills,
         },
         null,
@@ -2010,6 +2020,7 @@ function App() {
           <GoalPanel settings={goalSettings} change={setGoalSettings}
             ready={ready} blocked={busy || Boolean(proposal || review) || creating || connecting || publishing || skillsOpen}
             workspace={() => goalWorkspace.current} tools={agentTools}
+            hint={() => spaceInfo.hint}
             ask={askGoal} apply={applyGoal} running={(running) => {
               setGoalRunning(running);
               if (running) setError("");
@@ -2017,6 +2028,13 @@ function App() {
                 ? "Goal mode is applying reviewed edits locally. Use its steering, Pause, or Stop controls."
                 : "Goal mode stopped. Review local changes and test externally before publishing.");
             }} failure={setError} />
+          <details className="pinned">
+            <summary>
+              Spaces
+              {spaces.active && <span className="status-dot online" />}
+            </summary>
+            <SpacePanel state={spaces} change={setSpaces} openPaths={Object.keys(files)} disabled={busy} />
+          </details>
           <details className="pinned">
             <summary>Project notes (saved, editable)</summary>
             <textarea aria-label="Project notes" value={notes} maxLength={4000} disabled={busy}
