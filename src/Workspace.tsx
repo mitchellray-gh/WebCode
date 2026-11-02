@@ -30,6 +30,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Sparkles,
   Square,
   Unplug,
   X,
@@ -94,6 +95,8 @@ import type { GoalCall, GoalEdit, GoalFiles, GoalSettings, GoalTools } from "./g
 import { searchWorkspace } from "./agentTools";
 import { checkPage } from "./pageCheck";
 import SpacePanel from "./SpacePanel";
+import { inlineBridge, inlineExtension } from "./inlineSuggest";
+import { SUGGEST_INSTRUCTION, cleanSuggestion, suggestionPrompt } from "./suggest";
 import ConnectorPanel from "./ConnectorPanel";
 import { McpClient, toolSchema } from "./mcp";
 import type { McpTool } from "./mcp";
@@ -136,6 +139,7 @@ function extensions(path: string) {
 }
 
 const MOBILE_QUERY = "(max-width: 760px)";
+const INLINE_KEY = "technicalskills.inline-suggestions";
 
 function useMobile() {
   const [mobile, setMobile] = useState(
@@ -324,6 +328,10 @@ function App() {
   const nextId = useRef(1);
   const endOfChat = useRef<HTMLDivElement>(null);
   const busy = phase !== "idle" || networkBusy || !recoveryReady || goalRunning;
+  const [inlineOn, setInlineOn] = useState(() => {
+    try { return localStorage.getItem(INLINE_KEY) === "1"; } catch { return false; }
+  });
+  const inlineBusy = useRef(false);
   const session = useMemo<Session>(() => ({
     version: 1,
     files: Object.fromEntries(Object.entries(files).map(([path, file]) => [path, { content: file.content }])),
@@ -946,9 +954,38 @@ function App() {
     return `File: ${active}${selected ? ` (selected characters ${range.from}-${range.to})` : " (entire file)"}\n${selected ? activeFile.content.slice(range.from, range.to) : activeFile.content}`;
   }
 
+  // One request at a time reaches the model: chat and agent requests wait for an in-flight suggestion.
+  async function idleModel() {
+    for (let waited = 0; inlineBusy.current && waited < 200; waited++)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  async function suggestInline(before: string, after: string) {
+    const instance = model.current;
+    if (!instance || inlineBusy.current || !inlineBridge.allowed) return "";
+    inlineBusy.current = true;
+    try {
+      const answer = await instance.complete(
+        [{ role: "system", content: SUGGEST_INSTRUCTION }, { role: "user", content: suggestionPrompt(active, before, after) }],
+        new AbortController().signal, () => {}, 64,
+      );
+      return answer.finished || answer.text ? cleanSuggestion(answer.text, before, after) : "";
+    } catch {
+      return "";
+    } finally {
+      inlineBusy.current = false;
+    }
+  }
+  useEffect(() => {
+    inlineBridge.allowed = inlineOn && ready && !busy;
+    inlineBridge.request = suggestInline;
+  });
+
   async function askGoal(call: GoalCall, signal: AbortSignal) {
     const instance = model.current;
     if (!instance) throw new Error("Load the model before starting agent mode.");
+    signal.throwIfAborted();
+    await idleModel();
     signal.throwIfAborted();
     if (latestSession.current.transcript.length >= 19_990 ||
         bytes(JSON.stringify(latestSession.current)) > MAX_SESSION_BYTES - 64_000)
@@ -1103,6 +1140,7 @@ function App() {
       setError("Open a text file before requesting an edit.");
       return;
     }
+    await idleModel();
     const abort = new AbortController();
     controller.current = abort;
     const id = nextId.current++;
@@ -1636,6 +1674,22 @@ function App() {
           <div className="tab-spacer" />
           <div className="tab-actions">
             <button
+              className={`icon-button${inlineOn ? " active" : ""}`}
+              title={ready ? "Inline suggestions: ghost text while you type (uses the loaded model)" : "Inline suggestions (load a model first)"}
+              aria-label="Inline suggestions"
+              aria-pressed={inlineOn}
+              onClick={() => {
+                const next = !inlineOn;
+                setInlineOn(next);
+                try { localStorage.setItem(INLINE_KEY, next ? "1" : "0"); } catch { /* storage unavailable: the choice lasts for this visit */ }
+                setNotice(next
+                  ? ready ? "Inline suggestions on. Pause while typing; press Tab or tap the grey text to accept, Esc to dismiss." : "Inline suggestions on. Load a model to start receiving them."
+                  : "Inline suggestions off.");
+              }}
+            >
+              <Sparkles size={16} />
+            </button>
+            <button
               className="icon-button"
               title="Preview app (HTML, CSS, JavaScript)"
               aria-label="Preview app"
@@ -1676,6 +1730,7 @@ function App() {
               extensions={[
                 ...extensions(active),
                 ...(mobile ? [EditorView.lineWrapping] : []),
+                inlineExtension,
               ]}
               basicSetup={{ foldGutter: !mobile, autocompletion: true }}
               onChange={(content) =>

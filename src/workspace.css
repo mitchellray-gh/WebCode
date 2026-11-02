@@ -1223,6 +1223,15 @@ summary {
   overflow: auto;
   min-height: 150px;
 }
+.cm-ghost {
+  opacity: 0.45;
+  white-space: pre;
+  cursor: pointer;
+}
+.icon-button.active {
+  color: var(--accent);
+  background: #e4efe7;
+}
 .answer-actions {
   display: flex;
   flex-wrap: wrap;
