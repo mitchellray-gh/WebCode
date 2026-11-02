@@ -1,19 +1,22 @@
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { CONTEXT_WINDOW, OUTPUT_TOKENS } from "./context";
-import type { Message, Summarize } from "./context";
-import { DEFAULT_MODEL_ID, modelChoice, modelSource } from "./models";
+import { CONTEXT_WINDOW, OUTPUT_TOKENS } from "./context.ts";
+import type { Message, Summarize } from "./context.ts";
+import { DEFAULT_MODEL_ID, modelChoice, modelSource } from "./models.ts";
 
 export const MODEL_ID = DEFAULT_MODEL_ID;
 
 export class BrowserModel {
   private worker?: Worker;
   private engine?: WebWorkerMLCEngine;
+  private onFailure: (message: string) => void = () => {};
 
   async load(
     signal: AbortSignal,
     progress: (fraction: number, text: string) => void,
     modelId: string = DEFAULT_MODEL_ID,
+    onFailure: (message: string) => void = () => {},
   ) {
+    this.onFailure = onFailure;
     const choice = modelChoice(modelId);
     const gpu = (
       navigator as Navigator & {
@@ -70,6 +73,12 @@ export class BrowserModel {
         interrupted,
       ]);
       signal.throwIfAborted();
+      const failed = () => {
+        this.dispose();
+        this.onFailure("Model worker stopped. Your workspace is retained; reload the model to continue.");
+      };
+      worker.addEventListener("error", failed);
+      worker.addEventListener("messageerror", failed);
     } catch (error) {
       this.dispose();
       throw error;
@@ -85,30 +94,60 @@ export class BrowserModel {
     update: (text: string) => void,
     maxTokens = OUTPUT_TOKENS,
   ) {
-    if (!this.engine) throw new Error("Load the model first.");
+    const engine = this.engine;
+    const worker = this.worker;
+    if (!engine || !worker) throw new Error("Load the model first.");
     signal.throwIfAborted();
-    await this.engine.resetChat();
-    signal.throwIfAborted();
-    const stop = () => this.engine?.interruptGenerate();
+    let running = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let fail: (error: Error) => void = () => {};
+    const interrupted = new Promise<never>((_, reject) => { fail = reject; });
+    const touch = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fail(new Error("Model stopped responding for 120 seconds. Reload the model, or select a smaller one.")), 120000);
+    };
+    const failed = () => fail(new Error("Model worker failed. Reload the model to continue."));
+    const stop = () => fail(new DOMException("Generation cancelled.", "AbortError"));
+    worker.addEventListener("error", failed);
+    worker.addEventListener("messageerror", failed);
     signal.addEventListener("abort", stop, { once: true });
+    touch();
     try {
-      const stream = await this.engine.chat.completions.create({
-        messages,
-        stream: true,
-        max_tokens: maxTokens,
-        temperature: 0.2,
-      });
-      let text = "";
-      let finished = false;
-      for await (const chunk of stream) {
+      const generate = async () => {
+        await engine.resetChat();
+        if (!running) throw new Error("Model operation already stopped.");
         signal.throwIfAborted();
-        text += chunk.choices[0]?.delta.content || "";
-        if (chunk.choices[0]?.finish_reason === "stop") finished = true;
-        update(text);
-      }
-      signal.throwIfAborted();
-      return { text, finished };
+        const stream = await engine.chat.completions.create({
+          messages,
+          stream: true,
+          max_tokens: maxTokens,
+          temperature: 0.2,
+        });
+        let text = "";
+        let finished = false;
+        for await (const chunk of stream) {
+          if (!running) throw new Error("Model operation already stopped.");
+          signal.throwIfAborted();
+          touch();
+          text += chunk.choices[0]?.delta.content || "";
+          if (chunk.choices[0]?.finish_reason === "stop") finished = true;
+          update(text);
+        }
+        signal.throwIfAborted();
+        return { text, finished };
+      };
+      return await Promise.race([generate(), interrupted]);
+    } catch (error) {
+      this.dispose();
+      this.onFailure(signal.aborted
+        ? "Generation stopped. Reload the model to continue; your workspace is retained."
+        : error instanceof Error ? error.message : "Model failed. Reload to continue.");
+      throw error;
     } finally {
+      running = false;
+      clearTimeout(timer);
+      worker.removeEventListener("error", failed);
+      worker.removeEventListener("messageerror", failed);
       signal.removeEventListener("abort", stop);
     }
   }

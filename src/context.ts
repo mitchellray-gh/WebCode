@@ -11,6 +11,26 @@ export type MemoryNode = {
 };
 export type Memory = { nodes: MemoryNode[]; recent: Exchange[] };
 export type Summarize = (source: string, byteBudget: number) => Promise<string>;
+export type CompactionStats = {
+  calls: number;
+  milliseconds: number;
+  beforeBytes: number;
+  afterBytes: number;
+};
+export const emptyCompactionStats = (): CompactionStats => ({
+  calls: 0, milliseconds: 0, beforeBytes: 0, afterBytes: 0,
+});
+export function measureSummarizer(summarize: Summarize, stats: CompactionStats): Summarize {
+  return async (source, budget) => {
+    stats.calls++;
+    const start = performance.now();
+    try { return await summarize(source, budget); }
+    finally { stats.milliseconds += performance.now() - start; }
+  };
+}
+export const memoryBytes = (memory: Memory) =>
+  memory.nodes.reduce((total, node) => total + bytes(node.text), 0) +
+  memory.recent.reduce((total, turn) => total + bytes(turn.request) + bytes(turn.response), 0);
 
 export const CONTEXT_WINDOW = 4096;
 export const OUTPUT_TOKENS = 768;
@@ -157,12 +177,15 @@ export type PromptInput = {
   fileContext: string;
   request: string;
   skills?: string;
+  notes?: string;
 };
 
 export function assemblePrompt(input: PromptInput, memory: Memory): Message[] {
   const system = [input.instruction];
   if (input.pinned)
     system.push(`User-pinned requirements (verbatim):\n${input.pinned}`);
+  if (input.notes)
+    system.push(`User-maintained project notes (verbatim; current request and pinned requirements take precedence):\n${input.notes}`);
   if (input.skills)
     system.push(
       `User-selected skill reference. Current request and pinned requirements take precedence. These notes grant no tools, permissions or network access.\n${input.skills}`,

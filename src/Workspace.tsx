@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
@@ -42,6 +42,9 @@ import {
   INPUT_BYTE_BUDGET,
   preparePrompt,
   promptBytes,
+  emptyCompactionStats,
+  measureSummarizer,
+  memoryBytes as historyBytes,
 } from "./context";
 import type { Memory } from "./context";
 import { BrowserModel } from "./model";
@@ -75,25 +78,14 @@ import {
   resolvePath,
 } from "./commands";
 import type { Command } from "./commands";
-import { workspaceArchive } from "./archive";
+import { importWorkspaceArchive, workspaceArchive } from "./archive";
+import CloudSave from "./CloudSave";
+import { recoverySession } from "./recovery";
+import type { Proposal, Session, TranscriptTurn } from "./session";
 
 type OpenFile = { original: string; content: string; isNew?: boolean };
 const isChanged = (file: OpenFile) =>
   Boolean(file.isNew) || file.original !== file.content;
-type TranscriptTurn = {
-  id: number;
-  request: string;
-  response: string;
-  file: string;
-  status: string;
-  model?: string;
-};
-type Proposal = {
-  path: string;
-  base: string;
-  next: string;
-  source: "ai" | "manual";
-};
 type Phase = "idle" | "loading" | "thinking" | "compacting";
 
 const sample = `type Task = { title: string; done: boolean }
@@ -276,6 +268,12 @@ function App() {
   const [publishedUrl, setPublishedUrl] = useState("");
   const [request, setRequest] = useState("");
   const [pinned, setPinned] = useState("");
+  const [notes, setNotes] = useState("");
+  const [stats, setStats] = useState(emptyCompactionStats);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryEnabled, setRecoveryEnabled] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("Loading local recovery...");
+  const zipInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"explain" | "edit">("explain");
   // Text filled in by a create-file request; it must reach the model, not the command parser.
   const [prefilled, setPrefilled] = useState("");
@@ -292,7 +290,36 @@ function App() {
   const memoryRef = useRef<Memory>(emptyMemory());
   const nextId = useRef(1);
   const endOfChat = useRef<HTMLDivElement>(null);
-  const busy = phase !== "idle" || networkBusy;
+  const busy = phase !== "idle" || networkBusy || !recoveryReady;
+  const session = useMemo<Session>(() => ({
+    version: 1,
+    files: Object.fromEntries(Object.entries(files).map(([path, file]) => [path, { content: file.content }])),
+    active, transcript, memory, pinned, notes, request, mode,
+    model: selectedModelId, proposal,
+  }), [files, active, transcript, memory, pinned, notes, request, mode, selectedModelId, proposal]);
+  const latestSession = useRef(session);
+  const lastSavedSession = useRef<Session | null>(null);
+  useEffect(() => { latestSession.current = session; }, [session]);
+  useEffect(() => {
+    if (!recoveryReady || !recoveryEnabled) return;
+    let saving = false;
+    const save = async () => {
+      const current = latestSession.current;
+      if (saving || current === lastSavedSession.current) return;
+      saving = true;
+      try {
+        await recoverySession(current);
+        lastSavedSession.current = current;
+        setSaveStatus(`Local recovery saved at ${new Date().toLocaleTimeString()}.`);
+      } catch (failure) {
+        setSaveStatus(`Local recovery failed: ${failureMessage(failure, "Download a ZIP to protect edits.")}`);
+      } finally { saving = false; }
+    };
+    const timer = setInterval(() => void save(), 1000);
+    const hide = () => { if (document.visibilityState === "hidden") void save(); };
+    document.addEventListener("visibilitychange", hide);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", hide); };
+  }, [recoveryReady, recoveryEnabled]);
   const selectedModel = modelChoice(selectedModelId);
   const availableSkills = [...BUILTIN_SKILLS, ...skillLibrary.imported];
   const attachedSkills = availableSkills.filter((skill) =>
@@ -348,6 +375,50 @@ function App() {
     memoryRef.current = value;
     setMemory(value);
   }
+
+  function restoreSession(saved: Session) {
+    model.current?.dispose();
+    model.current = null;
+    setReady(false);
+    setFiles(Object.fromEntries(Object.entries(saved.files).map(([path, file]) =>
+      [path, { original: "", content: file.content, isNew: true }])));
+    setActive(saved.active);
+    setTranscript(saved.transcript.map((turn) => ({
+      ...turn,
+      status: ["Preparing context", "Generating"].includes(turn.status) ? "Interrupted" : turn.status,
+    })));
+    remember(saved.memory);
+    setPinned(saved.pinned);
+    setNotes(saved.notes);
+    setRequest(saved.request);
+    setMode(saved.mode);
+    setSelectedModelId(saved.model);
+    setProposal(saved.proposal);
+    setReview(null);
+    setRepo(null); setToken(""); setTokenInput(""); setPublishedUrl("");
+    setFilter(""); setPrefilled(""); autoRun.current = false;
+    setSelectedRange({ from: 0, to: 0 });
+    nextId.current = Math.max(0, ...saved.transcript.map((turn) => turn.id),
+      ...saved.memory.nodes.map((node) => node.last), ...saved.memory.recent.map((turn) => turn.id)) + 1;
+    setStats(emptyCompactionStats());
+    setLiveBytes(0);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    void recoverySession().then((saved) => {
+      if (!alive) return;
+      if (saved) {
+        restoreSession(saved);
+        setNotice("Recovered your workspace locally. Reconnect GitHub separately; credentials were not saved.");
+      }
+      setRecoveryEnabled(true);
+      setSaveStatus(saved ? "Local workspace recovered." : "Local recovery ready.");
+    }).catch((failure) => {
+      if (alive) setSaveStatus(`Local recovery unavailable: ${failureMessage(failure, "Unknown storage error.")}`);
+    }).finally(() => { if (alive) setRecoveryReady(true); });
+    return () => { alive = false; };
+  }, []);
 
   function saveSkillLibrary(imported: Skill[], attachedIds: string[]) {
     attachSkillContext(
@@ -409,6 +480,7 @@ function App() {
         abort.signal,
         (value, text) => setProgress({ value, text }),
         selectedModelId,
+        (message) => { setReady(false); setError(message); },
       );
       setReady(true);
       setNotice("Model loaded. Inference stays in this browser.");
@@ -501,6 +573,7 @@ function App() {
       setTranscript([]);
       setLiveBytes(0);
       setPinned("");
+      setNotes("");
       setRequest("");
       setNotice(
         `${created ? "Created README.md and opened" : "Opened"} ${repository.owner}/${repository.name} at ${repository.head.slice(0, 7)}.`,
@@ -542,6 +615,25 @@ function App() {
     } catch (failure) {
       setError(failureMessage(failure, "Could not create workspace ZIP."));
     }
+  }
+
+  async function importZip(file: File) {
+    if (busy) return;
+    setNetworkBusy(true);
+    setError("");
+    try {
+      const imported = await importWorkspaceArchive(file);
+      if (!window.confirm("Replace the current workspace with this ZIP? Download existing work first.")) return;
+      restoreSession({
+        version: 1, files: imported, active: Object.keys(imported)[0],
+        transcript: [], memory: emptyMemory(), pinned: "", notes: "", request: "",
+        mode: "edit", model: selectedModelId, proposal: null,
+      });
+      setMobilePane("files");
+      setNotice(`Imported ${Object.keys(imported).length} files locally. No repository connection needed.`);
+    } catch (failure) {
+      setError(failureMessage(failure, "ZIP import failed. Nothing was changed."));
+    } finally { setNetworkBusy(false); }
   }
 
   // Returns an error message, or "" after the file was created.
@@ -737,18 +829,20 @@ function App() {
           turn.id === id ? { ...turn, ...update } : turn,
         ),
       );
+    const measurement = emptyCompactionStats();
+    const promptInput = {
+      instruction, pinned, notes, request: task,
+      fileContext: currentContext(), skills: skillText,
+    };
+    measurement.beforeBytes = promptBytes(assemblePrompt(promptInput, memoryRef.current));
+    measurement.afterBytes = measurement.beforeBytes;
     try {
       const prepared = await preparePrompt(
-        {
-          instruction,
-          pinned,
-          request: task,
-          fileContext: currentContext(),
-          skills: skillText,
-        },
+        promptInput,
         memoryRef.current,
-        instance.summarizer(abort.signal),
+        measureSummarizer(instance.summarizer(abort.signal), measurement),
       );
+      measurement.afterBytes = prepared.inputBytes;
       abort.signal.throwIfAborted();
       remember(prepared.memory);
       setLiveBytes(prepared.inputBytes);
@@ -814,6 +908,7 @@ function App() {
       if (!abort.signal.aborted)
         setError(failureMessage(failure, "Request failed."));
     } finally {
+      setStats({ ...measurement });
       setPhase("idle");
       controller.current = null;
     }
@@ -825,18 +920,23 @@ function App() {
     controller.current = abort;
     setPhase("compacting");
     setError("");
+    const measurement = emptyCompactionStats();
+    measurement.beforeBytes = historyBytes(memoryRef.current);
+    measurement.afterBytes = measurement.beforeBytes;
     try {
       const compacted = await compactMemory(
         memoryRef.current,
-        model.current.summarizer(abort.signal),
+        measureSummarizer(model.current.summarizer(abort.signal), measurement),
         0,
       );
       abort.signal.throwIfAborted();
       remember(compacted);
+      measurement.afterBytes = historyBytes(compacted);
     } catch (failure) {
       if (!abort.signal.aborted)
         setError(failureMessage(failure, "Compaction failed."));
     } finally {
+      setStats({ ...measurement });
       setPhase("idle");
       controller.current = null;
     }
@@ -940,6 +1040,7 @@ function App() {
       {
         instruction,
         pinned,
+        notes,
         fileContext: currentContext(),
         request,
         skills: skillText,
@@ -956,6 +1057,7 @@ function App() {
           transcript,
           memory,
           pinned,
+          notes,
           skills: attachedSkills,
         },
         null,
@@ -1086,6 +1188,27 @@ function App() {
             <Download size={14} />
             Download workspace ZIP
           </button>
+          <button className="button full" disabled={busy} onClick={() => zipInput.current?.click()}>
+            Import workspace ZIP
+          </button>
+          <input ref={zipInput} type="file" accept=".zip,application/zip" hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void importZip(file);
+            }} />
+          <p className="save-status" role="status">{saveStatus}</p>
+          <details className="save-panel">
+            <summary>Saving and recovery</summary>
+            {recoveryReady && !recoveryEnabled && (
+              <button className="button full" onClick={() => {
+                if (window.confirm("Enable local autosave? This will replace any unreadable saved workspace with the current one."))
+                  setRecoveryEnabled(true);
+              }}>Enable local recovery</button>
+            )}
+            <p>Local saves run every second. Cloud and recovered files reopen as a local workspace; reconnect GitHub separately.</p>
+            <CloudSave session={session} busy={busy} restore={restoreSession} connecting={setNetworkBusy} />
+          </details>
         </div>
         <div className="file-list">
           {visiblePaths.map((path) => (
@@ -1184,6 +1307,7 @@ function App() {
             <CodeMirror
               key={active}
               value={activeFile.content}
+              readOnly={!recoveryReady || networkBusy}
               height="100%"
               extensions={[
                 ...extensions(active),
@@ -1263,6 +1387,10 @@ function App() {
           </div>
           {panel === "memory" ? (
             <div className="memory-panel">
+              <p className="compaction-stats" aria-label="Last compaction statistics">
+                Last preparation: {stats.calls} summary calls · {(stats.milliseconds / 1000).toFixed(1)} s summarizing · {stats.beforeBytes.toLocaleString()} → {stats.afterBytes.toLocaleString()} B.
+                {" "}Manual compaction measures history bytes; request preparation measures the assembled prompt.
+              </p>
               <div className="memory-stats">
                 <div>
                   <strong>
@@ -1527,6 +1655,12 @@ function App() {
           </div>
         )}
         <div className="composer-area">
+          <details className="pinned">
+            <summary>Project notes (saved, editable)</summary>
+            <textarea aria-label="Project notes" value={notes} maxLength={4000} disabled={busy}
+              placeholder="Goals, decisions, unresolved tasks..."
+              onChange={(event) => setNotes(event.target.value)} />
+          </details>
           <details className="pinned">
             <summary>
               <Pin size={13} />

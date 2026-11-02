@@ -716,6 +716,44 @@ summary {
 }
 .workspace-download {
   padding: 0 12px 12px;
+  max-height: 45%;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.workspace-download > button + button {
+  margin-top: 6px;
+}
+.save-panel {
+  margin-top: 10px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.save-panel summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.save-panel p,
+.compaction-stats {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.save-panel label {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+.save-panel input {
+  width: 100%;
+  min-height: 40px;
+}
+.compaction-stats {
+  font-size: 11px;
+}
+.save-status {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .chat-empty {
   display: flex;

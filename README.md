@@ -1,6 +1,6 @@
 # technicalskills
 
-A lightweight browser coding workspace using React, CodeMirror, GitHub REST API, and WebLLM. No AI server, API key, or hosted inference. A review-first assistant, not an autonomous coding agent.
+A lightweight browser coding workspace using React, CodeMirror, GitHub REST API, and WebLLM. No hosted AI inference. Optional private Neon saves use a Vercel API function; inference stays in your browser. A review-first assistant, not an autonomous coding agent.
 
 ## Run
 
@@ -33,6 +33,8 @@ Weights download from ModelScope (`modelscope.cn`); Hugging Face is never contac
 - Preserve the latest request, active code selection (or whole active file), and pinned requirements verbatim. Reject oversized protected context instead of silently truncating it.
 - Reserve 768 output tokens and 512 tokens of template/headroom from a 4,096-token context configuration. The remaining 2,816-byte input limit uses conservative UTF-8 byte accounting plus per-message overhead, **not an exact tokenizer count**. This intentionally allows less code than the nominal window. Select a smaller code region when necessary.
 - Keep the full transcript separately for the lifetime of the page, with JSON export. The transcript UI throttles streaming updates and mobile renders only the latest six exchanges; older exchanges remain in the export. Compaction failure is atomic: original turns stay available for retry. Inspect summaries or manually compact in the Memory panel.
+- The Memory panel reports actual summary calls, time spent awaiting summarization, and before/after byte counts for the last operation (including failed attempts). Request preparation measures the assembled prompt; manual compaction measures history text. These are not GPU-memory or semantic-quality measurements.
+- Editable **Project notes** in the assistant preserve your goals, decisions, and next tasks verbatim alongside pinned requirements. Notes count toward the protected prompt budget, are never automatically rewritten, and are included in recovery/cloud saves and conversation exports.
 
 Compaction extends session continuity, not the physical context window or reasoning ability. It adds inference latency and may forget important details, particularly after repeated merging. Pin critical constraints and re-read actual source; small models can still produce poor edits or poor summaries. Source and notes are marked as untrusted, but prompt-injection immunity is not claimed. The model cannot execute commands, publish, or access credentials.
 
@@ -44,7 +46,30 @@ No repository or GitHub token is required. Start in the scratch workspace, use *
 
 Choose **Download workspace ZIP** in Explorer (the **Files** tab on mobile) to save all open and newly created files to your phone or computer, with their folder paths and current edits preserved. Unapplied proposals, conversation history, and credentials are not included. With a repository connected, unopened remote files are not included. Extract the ZIP before uploading the files to GitHub later; uploading the ZIP alone does not populate a repository's source files.
 
-The browser controls where downloads are saved. Download before closing or reloading: workspace files remain session-only.
+Choose **Import workspace ZIP** to reopen a downloaded project. Import replaces the workspace only after validation and confirmation, disconnects GitHub, and clears the previous conversation/notes. Only UTF-8 text files are supported; binary files, invalid paths, and file/folder collisions fail atomically. Limits: 3 MB compressed input, 1,000 files, 500 KB per file, and 2 MB expanded text. ZIP creation/import runs locally.
+
+The browser controls where downloads are saved. Keep ZIP backups even with autosave.
+
+### Recovery and private Neon saves
+
+The app automatically saves a local recovery copy in IndexedDB every second when changes are pending, including partial responses. On reopen it restores files, active file, conversation, summaries, pinned requirements, project notes, prompt draft, model selection, and pending proposal. Interrupted requests are marked as interrupted, not silently resumed. Recovered files reopen as a **local workspace**, not an authenticated GitHub checkout. Only open/new files are saved, not unopened remote repository files. Models must be loaded again.
+
+Local save status and storage failures are displayed in **Files**, alongside **Saving and recovery**. If an existing recovery copy cannot be read, autosaving remains disabled until you explicitly enable it, so unreadable data is not automatically overwritten. Recovery and cloud snapshots are limited to 3 MB; oversized saves fail visibly rather than silently dropping data. Browser eviction, private-browsing restrictions, an immediate crash before the next write, or clearing site data can still lose local changes. Local recovery is one slot per browser profile/origin; avoid editing in multiple tabs. Do not rely on unload events as a backup.
+
+To enable private Neon saves on Vercel:
+
+1. In your Neon project's SQL Editor, run [`neon-schema.sql`](./neon-schema.sql).
+2. Set **server-only** Vercel environment variables `DATABASE_URL` (your Neon connection string) and `WORKSPACE_ACCESS_KEY` (at least 32 cryptographically random characters). Do **not** prefix them with `VITE_`, commit them, or paste them into chat. For example, generate a key locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Set variables on the intended deployment environment and redeploy.
+3. Open **Files → Saving and recovery → Neon cloud saves**, enter that private access key, and choose **Connect / load cloud**. The first connection saves the local workspace if the cloud slot is empty; otherwise loading requires confirmation before replacing local work.
+4. While connected, cloud autosave checks every 3 seconds while the workspace is idle. On another device, reconnect with the same key to load the save. Each update checks a revision, so an outdated device cannot silently overwrite a newer save. Conflicts/network errors stop cloud autosave and display an error; export local edits, then reconnect to resolve. There is one shared private cloud workspace, not a multi-user account system.
+
+The access key grants read/write access to the entire cloud workspace: keep it private, use HTTPS, and rotate it in Vercel if exposed. It stays only in page memory and is forgotten on disconnect/reload. GitHub credentials and database credentials are never included in snapshots. Source, notes, or chat that you yourself paste secrets into will still be saved; avoid doing so. Saving sends workspace contents to **your configured Neon database**. Inference still runs locally.
+
+The `/api/workspace` handler is a Vercel Node function; `npm run dev` alone serves only the front end, so cloud saves require the Vercel deployment or Vercel's local development environment. Local recovery, ZIP import/export, notes, and statistics work with ordinary Vite. Neon schema/credentials and live deployment connectivity must be verified separately.
+
+### Model failure recovery
+
+Worker errors, worker message errors, and inference/runtime exceptions mark the model offline and preserve the workspace. A pending generation with no progress for 120 seconds fails explicitly rather than leaving Send permanently blocked. Choose **Load model** again (or a smaller model). Stopping generation terminates the worker to release resources, so cancellation also requires a reload. A completely killed Chrome tab cannot report an error; reopening uses the local recovery copy.
 
 ### Connect and publish
 
@@ -52,7 +77,7 @@ The browser controls where downloads are saved. Download before closing or reloa
 2. Select a UTF-8 file and edit locally, or select a small section and use Explain / Edit. AI proposals must contain a complete fenced code block and finish normally. Review the diff, then apply locally. An intervening edit prevents a stale proposal from overwriting the file.
 3. Review local changes, then explicitly publish **all changed files** to a new branch, either with the Publish branch button or by typing `/publish [branch] [message]` (or "publish my changes to GitHub") in the assistant. The model never publishes; the app does, after a confirmation that lists the branch and files. Publishing never updates an existing branch. It checks the source head, creates blobs/tree/commit, and creates the branch ref last. The compare link opens GitHub's pull-request flow. Source branches may advance after the head check; the new branch still starts from the loaded snapshot and never overwrites remote work.
 
-File edits, transcript, and credentials are session-only. Download edited files and export the conversation before closing. A reload warning is provided, but browser warnings are not a backup. Never paste credentials into source or chat; those become model context by your action. A browser extension or XSS on the same origin could access in-memory credentials; this is not a hardened credential vault.
+File edits and conversation state have local recovery and optional private cloud saves; GitHub credentials remain session-only. Keep ZIP/conversation exports as independent backups. A reload warning is provided, but browser warnings are not a backup. Never paste credentials into source or chat; those become model context and saved workspace content by your action. A browser extension or XSS on the same origin could access in-memory credentials; this is not a hardened credential vault.
 
 ## Limits
 

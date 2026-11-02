@@ -10,6 +10,8 @@ import {
   levelBudget,
   preparePrompt,
   promptBytes,
+  emptyCompactionStats,
+  measureSummarizer,
 } from "../src/context.ts";
 
 const summarize = async (text, budget) =>
@@ -25,6 +27,21 @@ const input = {
   fileContext: "main.ts\nlet value = 2",
   request: "Explain the current code exactly.",
 };
+
+test("project notes stay verbatim and cannot bypass the protected input budget", async () => {
+  const notes = "Decision: keep API stable. Next: test mobile recovery.";
+  const prepared = await preparePrompt({ ...input, notes }, emptyMemory(), summarize);
+  assert.ok(prepared.messages[0].content.includes(notes));
+  await assert.rejects(preparePrompt({ ...input, notes: "x".repeat(5000) }, emptyMemory(), summarize), ContextBudgetError);
+});
+
+test("compaction telemetry counts actual calls including failures", async () => {
+  const stats = emptyCompactionStats();
+  const measured = measureSummarizer(async () => { throw new Error("GPU lost"); }, stats);
+  await assert.rejects(measured("source", 100), /GPU lost/);
+  assert.equal(stats.calls, 1);
+  assert.ok(stats.milliseconds >= 0);
+});
 
 test("explicit compaction maintains a logarithmic binary hierarchy", async () => {
   let memory = emptyMemory();
