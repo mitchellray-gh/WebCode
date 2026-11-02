@@ -1,10 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  assistPlan,
   extractCodeBlock,
   freshPath,
   parseCommand,
   resolvePath,
+  splitWorkspaceMention,
 } from "../src/commands.ts";
 
 test("slash commands map to real actions", () => {
@@ -203,4 +205,25 @@ test("pull request review is an explicit command; questions about reviewing reac
     assert.deepEqual(parseCommand(text), { type: "review", number: 5 }, text);
   for (const text of ["how should I review a pull request?", "review the pull request changes", "review my code"])
     assert.equal(parseCommand(text), null, text);
+});
+
+test("Copilot-style shortcuts act on the open code, and @workspace asks about the whole project", () => {
+  assert.deepEqual(parseCommand("/explain"), { type: "assist", kind: "explain", extra: "" });
+  assert.deepEqual(parseCommand("/fix the off-by-one"), { type: "assist", kind: "fix", extra: "the off-by-one" });
+  assert.deepEqual(parseCommand("/doc"), { type: "assist", kind: "doc", extra: "" });
+  assert.deepEqual(parseCommand("/tests with vitest"), { type: "assist", kind: "tests", extra: "with vitest" });
+  assert.equal(parseCommand("explain this function"), null);
+  assert.equal(parseCommand("fix the bug"), null);
+  assert.deepEqual(assistPlan("explain", "", "a.ts"), { mode: "explain", request: "Explain the selected code (or this file) clearly and briefly." });
+  assert.equal(assistPlan("fix", " only the loop ", "a.ts").mode, "edit");
+  assert.match(assistPlan("fix", " only the loop ", "a.ts").request, /smallest change that fixes them\. only the loop$/);
+  assert.match(assistPlan("doc", "", "a.ts").request, /without changing its behavior\.$/);
+  const tests = assistPlan("tests", "x".repeat(5000), "src/a.ts");
+  assert.match(tests.goal, /^Write unit tests for src\/a\.ts in a new test file next to it/);
+  assert.ok(tests.goal.length <= 1900);
+  assert.deepEqual(splitWorkspaceMention("@workspace where is auth handled?"), { mentioned: true, question: "where is auth handled?" });
+  assert.deepEqual(splitWorkspaceMention("  @Workspace: how does login work"), { mentioned: true, question: "how does login work" });
+  assert.deepEqual(splitWorkspaceMention("@workspace"), { mentioned: true, question: "" });
+  assert.deepEqual(splitWorkspaceMention("ask @workspace later"), { mentioned: false, question: "ask @workspace later" });
+  assert.deepEqual(splitWorkspaceMention("@workspaces are fine"), { mentioned: false, question: "@workspaces are fine" });
 });

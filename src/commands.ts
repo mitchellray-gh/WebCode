@@ -15,7 +15,24 @@ export type Command =
   | { type: "issues" }
   | { type: "issue"; number: number }
   | { type: "pr"; title: string }
-  | { type: "review"; number: number };
+  | { type: "review"; number: number }
+  | { type: "assist"; kind: "explain" | "fix" | "doc" | "tests"; extra: string };
+
+/** What each Copilot-style shortcut asks for: a chat request in a mode, or an Agent mode goal. */
+export function assistPlan(kind: "explain" | "fix" | "doc" | "tests", extra: string, path: string):
+  { mode: "explain" | "edit"; request: string } | { goal: string } {
+  const tail = extra.trim() ? ` ${extra.trim()}` : "";
+  if (kind === "explain") return { mode: "explain", request: `Explain the selected code (or this file) clearly and briefly.${tail}` };
+  if (kind === "fix") return { mode: "edit", request: `Find and fix bugs in the selected code (or this file). Make the smallest change that fixes them.${tail}` };
+  if (kind === "doc") return { mode: "edit", request: `Add concise documentation comments to the selected code (or this file) without changing its behavior.${tail}` };
+  return { goal: `Write unit tests for ${path} in a new test file next to it, following the project's existing test style if there is one.${tail}`.slice(0, 1900) };
+}
+
+/** "@workspace where is auth handled?" asks a question about the whole project instead of only the open file. */
+export function splitWorkspaceMention(text: string): { mentioned: boolean; question: string } {
+  const match = /^\s*@workspace\b[:,]?\s*/i.exec(text);
+  return match ? { mentioned: true, question: text.slice(match[0].length).trim() } : { mentioned: false, question: text.trim() };
+}
 
 export const HELP = [
   "The assistant model cannot reach GitHub itself; this app does it for you. Commands:",
@@ -28,6 +45,9 @@ export const HELP = [
   "/issue N  load issue N as the Agent mode goal; turn on Agent mode and press Start",
   "/pr [title]  open a pull request from the branch you just published (needs a token with Pull requests write)",
   "/review N  review pull request N locally in chunks; you confirm before anything is posted to GitHub",
+  "/explain, /fix, /doc  act on the selected code (or the open file): explain it, fix bugs, or add documentation comments (the last two stage a diff to review)",
+  "/tests  load \"write unit tests for this file\" as the Agent mode goal",
+  "@workspace <question>  ask about the whole project: searches open files and repository paths (and GitHub code search with a token) for context",
   "/run [page.html]  preview and serve a web app (HTML/CSS/JavaScript) from your workspace in an isolated in-browser sandbox",
 ].join("\n");
 
@@ -55,6 +75,11 @@ export function parseCommand(text: string): Command | null {
         const number = /^#?(\d{1,7})$/.exec(argument);
         return number ? { type: "issue", number: Number(number[1]) } : { type: "help" };
       }
+      case "explain":
+      case "fix":
+      case "doc":
+      case "tests":
+        return { type: "assist", kind: slash[1].toLowerCase() as "explain" | "fix" | "doc" | "tests", extra: argument };
       case "pr":
         return { type: "pr", title: argument };
       case "review": {

@@ -76,6 +76,8 @@ import {
 import type { Repository } from "./github";
 import {
   HELP,
+  assistPlan,
+  splitWorkspaceMention,
   extractCodeBlock,
   freshPath,
   parseCommand,
@@ -92,7 +94,7 @@ import Preview from "./Preview";
 import { defaultEntry, htmlFromReply, looksLikeHtml, previewPages, SNIPPET_PAGE } from "./sandbox";
 import { applyGoalEdit } from "./goalLoop";
 import type { GoalCall, GoalEdit, GoalFiles, GoalSettings, GoalTools } from "./goalLoop";
-import { searchWorkspace } from "./agentTools";
+import { clip, searchWorkspace } from "./agentTools";
 import { checkPage } from "./pageCheck";
 import SpacePanel from "./SpacePanel";
 import { inlineBridge, inlineExtension } from "./inlineSuggest";
@@ -830,6 +832,26 @@ function App() {
         }`,
       );
     }
+    if (command.type === "assist") {
+      const plan = assistPlan(command.kind, command.extra, active);
+      if ("goal" in plan) {
+        if (!activeFile) return reply("Open the file you want tests for, then run /tests again.");
+        setGoalSettings({ goal: plan.goal, steering: "" });
+        setMobilePane("assistant");
+        return reply(`Loaded "write tests for ${active}" as the Agent mode goal. Turn on Agent mode, adjust it if needed, and press Start / resume.`);
+      }
+      if (!activeFile) return reply("Open a file (and optionally select some code) first, then run this again.");
+      setMode(plan.mode);
+      setRequest(plan.request);
+      setPrefilled(plan.request);
+      autoRun.current = ready;
+      setMobilePane("assistant");
+      return reply(
+        ready
+          ? `Asking the assistant (${plan.mode === "edit" ? "Edit: review the proposed change when it appears" : "Explain"}).`
+          : "Load the model, then press Send to run it.",
+      );
+    }
     if (command.type === "open") {
       const opened = await openRepository(command.slug, command.branch, token);
       if (opened)
@@ -1157,11 +1179,16 @@ function App() {
       setError("Open a text file before requesting an edit.");
       return;
     }
+    const { mentioned, question } = splitWorkspaceMention(request);
+    if (mentioned && (!question || mode === "edit")) {
+      setError(mode === "edit" ? "@workspace answers questions about the whole project, so switch to Explain first." : "Add a question after @workspace.");
+      return;
+    }
     await idleModel();
     const abort = new AbortController();
     controller.current = abort;
     const id = nextId.current++;
-    const task = request;
+    const task = mentioned ? question : request;
     const path = active;
     const base = activeFile?.content || "";
     const range = { ...selectedRange };
@@ -1192,9 +1219,22 @@ function App() {
         ),
       );
     const measurement = emptyCompactionStats();
+    let fileContext = currentContext();
+    if (mentioned) {
+      let found = searchWorkspace(files, allPaths, question);
+      if (repo && token) {
+        try {
+          const hits = (await new GitHub(token).searchCode(repo, question)).filter((hit) => !Object.hasOwn(files, hit));
+          if (hits.length) found += `\nGitHub code search (not open):\n${hits.join("\n")}`;
+        } catch {
+          // Search is a bonus; the question still goes to the model with the open-file results.
+        }
+      }
+      fileContext = `${selected ? currentContext() : `Active file: ${active || "(none)"}`}\n\nWorkspace search for "${clip(question, 80)}" (project context; use only what is relevant):\n${found}`;
+    }
     const promptInput = {
       instruction, pinned: effectivePinned, notes, request: task,
-      fileContext: currentContext(), skills: skillText,
+      fileContext, skills: skillText,
     };
     measurement.beforeBytes = promptBytes(assemblePrompt(promptInput, memoryRef.current));
     measurement.afterBytes = measurement.beforeBytes;
