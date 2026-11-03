@@ -34,7 +34,8 @@ export const memoryBytes = (memory: Memory) =>
 
 export const CONTEXT_WINDOW = 4096;
 export const OUTPUT_TOKENS = 768;
-export const INPUT_BYTE_BUDGET = CONTEXT_WINDOW - OUTPUT_TOKENS - 512;
+export const CONTEXT_SAFETY_TOKENS = 128;
+export const INPUT_BYTE_BUDGET = CONTEXT_WINDOW - OUTPUT_TOKENS - CONTEXT_SAFETY_TOKENS;
 export const emptyMemory = (): Memory => ({ nodes: [], recent: [] });
 const encoder = new TextEncoder();
 export const bytes = (text: string) => encoder.encode(text).length;

@@ -136,7 +136,7 @@ test("coding tasks retry a fenced refusal without conversational history", async
     assert.equal(calls, 2);
     calls = 0;
     await assert.rejects(model.completeTask([
-      messages[0], { role: "user", content: "x".repeat(2800) },
+      messages[0], { role: "user", content: "x".repeat(3300) },
     ], new AbortController().signal, () => {}, "code"), /more context space/);
     assert.equal(calls, 1);
     model.complete = async () => ({ text: "```html\nunfinished", finished: false });

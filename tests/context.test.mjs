@@ -11,6 +11,7 @@ import {
   isCapabilityRefusal,
   ContextBudgetError,
   emptyMemory,
+  INPUT_BYTE_BUDGET,
   levelBudget,
   preparePrompt,
   promptBytes,
@@ -47,10 +48,10 @@ test("the budget breakdown adds up exactly and ranks what is using the space", (
 test("an over-budget open file is shortened at a line boundary for questions, never for small prompts", () => {
   const code = Array.from({ length: 200 }, (_, i) => `const value${i} = compute(${i}); // line ${i}`).join("\n");
   const input = { instruction: "You are a coding assistant.", pinned: "Keep it short.", fileContext: `File: a.ts (entire file)\n${code}`, request: "Explain the current code exactly." };
-  assert.ok(promptBytes(assemblePrompt(input, emptyMemory())) > 2816);
+  assert.ok(promptBytes(assemblePrompt(input, emptyMemory())) > INPUT_BYTE_BUDGET);
   const fitted = fitFileContext(input);
-  assert.ok(promptBytes(assemblePrompt(fitted, emptyMemory())) <= 2816);
-  assert.ok(promptBytes(assemblePrompt(fitted, emptyMemory())) > 2816 - 200);
+  assert.ok(promptBytes(assemblePrompt(fitted, emptyMemory())) <= INPUT_BYTE_BUDGET);
+  assert.ok(promptBytes(assemblePrompt(fitted, emptyMemory())) > INPUT_BYTE_BUDGET - 200);
   assert.match(fitted.fileContext, /^File: a\.ts \(entire file\)\nconst value0 = compute\(0\)/);
   assert.match(fitted.fileContext, /\n\[\.\.\.shortened to fit the model's small prompt budget; select the part you mean\]$/);
   assert.deepEqual({ ...fitted, fileContext: "" }, { ...input, fileContext: "" });
@@ -87,7 +88,7 @@ test("both chat modes affirm code generation despite earlier refusal history", a
     assert.match(system, /Never claim these actions occurred/);
     assert.match(system, mode === "edit" ? /complete replacement file/ : /provide its code/);
     assert.equal(prepared.messages.at(-1).content.endsWith("Write a small calculator in HTML."), true);
-    assert.ok(prepared.inputBytes <= 2816);
+    assert.ok(prepared.inputBytes <= INPUT_BYTE_BUDGET);
   }
 });
 
@@ -96,6 +97,13 @@ test("project notes stay verbatim and cannot bypass the protected input budget",
   const prepared = await preparePrompt({ ...input, notes }, emptyMemory(), summarize);
   assert.ok(prepared.messages[0].content.includes(notes));
   await assert.rejects(preparePrompt({ ...input, notes: "x".repeat(5000) }, emptyMemory(), summarize), ContextBudgetError);
+});
+
+test("the larger app budget admits a prompt that exceeded the old cap", async () => {
+  const prompt = { ...input, fileContext: "x".repeat(2700) };
+  const size = promptBytes(assemblePrompt(prompt, emptyMemory()));
+  assert.ok(size > 2816 && size <= INPUT_BYTE_BUDGET);
+  assert.equal((await preparePrompt(prompt, emptyMemory(), summarize)).inputBytes, size);
 });
 
 test("compaction telemetry counts actual calls including failures", async () => {
@@ -137,7 +145,7 @@ test("budget-triggered compaction needs zero model calls and always fits", async
   const started = performance.now();
   const prepared = await preparePrompt(input, memory, measureSummarizer(extractiveSummarize, stats));
   assert.ok(performance.now() - started < 1000);
-  assert.ok(prepared.inputBytes <= 2816);
+  assert.ok(prepared.inputBytes <= INPUT_BYTE_BUDGET);
   assert.ok(stats.calls > 0);
   assert.ok(prepared.memory.nodes.length > 0);
   assert.ok(prepared.memory.nodes.every((node) => bytes(node.text) <= levelBudget(node.level)));
@@ -259,7 +267,7 @@ test("129 large-response turns stay within budget using at most 511 summary call
       assert.ok(bytes(source) <= 1400);
       return "s".repeat(budget);
     });
-    assert.ok(prepared.inputBytes <= 2816);
+    assert.ok(prepared.inputBytes <= INPUT_BYTE_BUDGET);
     memory = appendExchange(prepared.memory, {
       id,
       request: "Request ".repeat(20),
