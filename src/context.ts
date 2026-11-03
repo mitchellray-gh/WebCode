@@ -299,6 +299,27 @@ export function assemblePrompt(input: PromptInput, memory: Memory): Message[] {
 export const promptBytes = (messages: Message[]) =>
   messages.reduce((total, message) => total + bytes(message.content) + 64, 0);
 
+/** Where the protected prompt's bytes go, largest first, with the unavoidable wrapper text as its own row. */
+export function budgetBreakdown(total: number, parts: [label: string, text: string][]): { label: string; bytes: number }[] {
+  const rows = parts.map(([label, text]) => ({ label, bytes: bytes(text) })).filter((row) => row.bytes > 0);
+  const framing = total - rows.reduce((sum, row) => sum + row.bytes, 0);
+  if (framing > 0) rows.push({ label: "Fixed message framing", bytes: framing });
+  return rows.sort((a, b) => b.bytes - a.bytes);
+}
+
+const SHORTENED = "\n[...shortened to fit the model's small prompt budget; select the part you mean]";
+
+/** For questions with no selection: cut the open file at a line boundary so the prompt fits instead of failing. */
+export function fitFileContext(input: PromptInput, limit = INPUT_BYTE_BUDGET): PromptInput {
+  const overflow = promptBytes(assemblePrompt(input, emptyMemory())) - limit;
+  if (overflow <= 0) return input;
+  const target = bytes(input.fileContext) - overflow - bytes(SHORTENED) - 8;
+  if (target < 200) return input;
+  const kept = chunks(input.fileContext, target)[0];
+  const cut = kept.lastIndexOf("\n");
+  return { ...input, fileContext: `${cut > 0 ? kept.slice(0, cut) : kept}${SHORTENED}` };
+}
+
 export async function preparePrompt(
   input: PromptInput,
   original: Memory,

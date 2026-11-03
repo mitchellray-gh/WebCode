@@ -4,7 +4,9 @@ import {
   appendExchange,
   assemblePrompt,
   bytes,
+  budgetBreakdown,
   compactMemory,
+  fitFileContext,
   codingInstruction,
   isCapabilityRefusal,
   ContextBudgetError,
@@ -30,6 +32,33 @@ const input = {
   fileContext: "main.ts\nlet value = 2",
   request: "Explain the current code exactly.",
 };
+
+test("the budget breakdown adds up exactly and ranks what is using the space", () => {
+  const parts = [["Open code", "x".repeat(1900)], ["Notes", "n".repeat(300)], ["Empty", ""], ["Request", "Explain this"]];
+  const total = promptBytes(assemblePrompt({ instruction: "Be brief.", pinned: "", fileContext: "x".repeat(1900), request: "Explain this", notes: "n".repeat(300) }, emptyMemory()));
+  const rows = budgetBreakdown(total, [["Assistant instructions", "Be brief."], ...parts]);
+  assert.equal(rows.reduce((sum, row) => sum + row.bytes, 0), total);
+  assert.equal(rows[0].label, "Open code");
+  assert.ok(rows.some((row) => row.label === "Fixed message framing" && row.bytes > 0));
+  assert.ok(!rows.some((row) => row.label === "Empty"));
+  assert.deepEqual(rows.map((row) => row.bytes), [...rows.map((row) => row.bytes)].sort((a, b) => b - a));
+});
+
+test("an over-budget open file is shortened at a line boundary for questions, never for small prompts", () => {
+  const code = Array.from({ length: 200 }, (_, i) => `const value${i} = compute(${i}); // line ${i}`).join("\n");
+  const input = { instruction: "You are a coding assistant.", pinned: "Keep it short.", fileContext: `File: a.ts (entire file)\n${code}`, request: "Explain the current code exactly." };
+  assert.ok(promptBytes(assemblePrompt(input, emptyMemory())) > 2816);
+  const fitted = fitFileContext(input);
+  assert.ok(promptBytes(assemblePrompt(fitted, emptyMemory())) <= 2816);
+  assert.ok(promptBytes(assemblePrompt(fitted, emptyMemory())) > 2816 - 200);
+  assert.match(fitted.fileContext, /^File: a\.ts \(entire file\)\nconst value0 = compute\(0\)/);
+  assert.match(fitted.fileContext, /\n\[\.\.\.shortened to fit the model's small prompt budget; select the part you mean\]$/);
+  assert.deepEqual({ ...fitted, fileContext: "" }, { ...input, fileContext: "" });
+  const small = { ...input, fileContext: "File: a.ts\nlet x = 1" };
+  assert.equal(fitFileContext(small), small);
+  const hopeless = { ...input, pinned: "p".repeat(3000) };
+  assert.equal(fitFileContext(hopeless), hopeless);
+});
 
 test("capability refusals, including fenced prose, are excluded from model history only", () => {
   const refusal = "```\nI can't build a calculator app for you as I'm not a professional and do not have the capability to create a calculator app.\n```";

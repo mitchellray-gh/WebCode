@@ -39,8 +39,10 @@ import {
   appendExchange,
   assemblePrompt,
   bytes,
+  budgetBreakdown,
   compactMemory,
   codingInstruction,
+  fitFileContext,
   extractiveSummarize,
   emptyMemory,
   INPUT_BYTE_BUDGET,
@@ -1250,10 +1252,8 @@ function App() {
       }
       fileContext = `${selected ? currentContext() : `Active file: ${active || "(none)"}`}\n\nWorkspace search for "${clip(question, 80)}" (project context; use only what is relevant):\n${found}`;
     }
-    const promptInput = {
-      instruction, pinned: effectivePinned, notes, request: task,
-      fileContext, skills: skillText,
-    };
+    const rawInput = { instruction, pinned: effectivePinned, notes, request: task, fileContext, skills: skillText };
+    const promptInput = mode === "explain" && !selected ? fitFileContext(rawInput) : rawInput;
     measurement.beforeBytes = promptBytes(assemblePrompt(promptInput, memoryRef.current));
     measurement.afterBytes = measurement.beforeBytes;
     try {
@@ -1499,19 +1499,33 @@ function App() {
   }
 
   const isCommand = request !== prefilled && parseCommand(request) !== null;
-  const prospectiveBytes = promptBytes(
-    assemblePrompt(
-      {
-        instruction,
-        pinned: effectivePinned,
-        notes,
-        fileContext: currentContext(),
-        request,
-        skills: skillText,
-      },
-      emptyMemory(),
-    ),
-  );
+  // Questions without a selection may shorten the open file to fit; edits need the whole file, so they never do.
+  const questionInput = {
+    instruction, pinned: effectivePinned, notes, fileContext: currentContext(), request, skills: skillText,
+  };
+  const trimmable = mode === "explain" && selectionSize === 0;
+  const promptInput = trimmable ? fitFileContext(questionInput) : questionInput;
+  const prospectiveBytes = promptBytes(assemblePrompt(promptInput, emptyMemory()));
+  const contextShortened = promptInput.fileContext !== questionInput.fileContext;
+  const budgetRows = budgetBreakdown(prospectiveBytes, [
+    ["Assistant instructions", instruction],
+    ["Pinned requirements", pinned],
+    ["Space instructions", spaceInfo.requirements],
+    ["Repository instructions", repoInstructions?.block ?? ""],
+    ["Project notes", notes],
+    ["Skills", skillText],
+    ["Open code / search context", promptInput.fileContext],
+    ["Your request", request],
+  ]);
+  const budgetHints: Record<string, string> = {
+    "Open code / search context": mode === "edit" ? "Select just the part to change; Edit needs the code it replaces." : "Select the part you mean.",
+    "Repository instructions": 'Open "Repository instructions" and choose "Stop using these instructions".',
+    "Space instructions": "Shorten the active Space's instructions, or choose No space.",
+    "Pinned requirements": "Shorten your pinned requirements.",
+    "Project notes": "Shorten your project notes (notes are always sent).",
+    "Skills": "Detach some attached skills.",
+    "Your request": "Shorten the request.",
+  };
   const exportConversation = () =>
     download(
       "technicalskills-session.json",
@@ -2389,10 +2403,22 @@ function App() {
               </span>
             </div>
             {prospectiveBytes > INPUT_BYTE_BUDGET && (
-              <div className="budget-warning">
-                Select less code or shorten the request.
+              <div className="budget-warning" role="alert">
+                Over by {(prospectiveBytes - INPUT_BYTE_BUDGET).toLocaleString()} B.{" "}
+                {budgetRows.slice(0, 3).map((row) => `${row.label} ${row.bytes.toLocaleString()} B`).join(", ")}.{" "}
+                {budgetHints[budgetRows.find((row) => budgetHints[row.label])?.label ?? ""] ?? "Shorten the request."}
               </div>
             )}
+            <details className="budget-details">
+              <summary>
+                What counts toward this?
+                {contextShortened && " (open file shortened to fit)"}
+              </summary>
+              <ul>
+                {budgetRows.map((row) => <li key={row.label}><span>{row.label}</span><span>{row.bytes.toLocaleString()} B</span></li>)}
+              </ul>
+              <p>Everything the model must receive for this request. Earlier chat is not counted: it is compacted automatically.</p>
+            </details>
           </form>
         </div>
       </aside>

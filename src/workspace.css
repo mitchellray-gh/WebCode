@@ -1223,6 +1223,31 @@ summary {
   overflow: auto;
   min-height: 150px;
 }
+.budget-details {
+  font-size: 11px;
+  margin-top: 4px;
+}
+.budget-details summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.budget-details ul {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+.budget-details li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--line);
+}
+.budget-details p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+  color: #727c74;
+}
 .cm-ghost {
   opacity: 0.45;
   white-space: pre;
