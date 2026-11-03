@@ -41,3 +41,14 @@ test("goal and steering persist without granting automatic resume permission", (
   assert.throws(() => readSession({ ...session(), goalLoop: { goal: "x".repeat(2001), steering: "" } }));
   assert.ok(!Object.hasOwn(readSession(session()), "goalLoop"));
 });
+
+test("an intentionally empty fresh workspace is a valid recoverable session", () => {
+  const fresh = readSession({
+    version: 1, files: {}, active: "", transcript: [],
+    memory: { nodes: [], recent: [] }, pinned: "", notes: "", request: "",
+    mode: "explain", model: DEFAULT_MODEL_ID, proposal: null,
+  });
+  assert.equal(Object.keys(fresh.files).length, 0);
+  assert.equal(fresh.active, "");
+  assert.equal(fresh.transcript.length, 0);
+});

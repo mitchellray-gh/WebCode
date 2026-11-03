@@ -32,6 +32,7 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Trash2,
   Unplug,
   X,
 } from "lucide-react";
@@ -354,12 +355,17 @@ function App() {
     if (!recoveryReady || !recoveryEnabled) return;
     let saving = false;
     const save = async () => {
-      const current = latestSession.current;
+      let current = latestSession.current;
       if (saving || current === lastSavedSession.current) return;
       saving = true;
       try {
-        await recoverySession(current);
-        lastSavedSession.current = current;
+        let changedDuringSave = true;
+        while (changedDuringSave) {
+          await recoverySession(current);
+          lastSavedSession.current = current;
+          changedDuringSave = latestSession.current !== current;
+          if (changedDuringSave) current = latestSession.current;
+        }
         setSaveStatus(`Local recovery saved at ${new Date().toLocaleTimeString()}.`);
       } catch (failure) {
         setSaveStatus(`Local recovery failed: ${failureMessage(failure, "Download a ZIP to protect edits.")}`);
@@ -517,6 +523,47 @@ function App() {
     setLiveBytes(0);
     setError("");
     setNotice("");
+  }
+
+  async function deleteWorkspace() {
+    if (busy || !window.confirm(
+      "Delete this local workspace and start fresh? This permanently clears its files, conversation, notes, pinned requirements, saved goal, Spaces, proposal, and local recovery copy. Download a workspace ZIP first if you may want these files later. This does not delete GitHub repositories, cloud saves, or saved skills.",
+    )) return;
+    const fresh: Session = {
+      version: 1, files: {}, active: "", transcript: [], memory: emptyMemory(),
+      pinned: "", notes: "", request: "", mode: "explain",
+      model: selectedModelId, proposal: null,
+      goalLoop: { goal: "", steering: "" },
+    };
+    const previous = latestSession.current;
+    latestSession.current = fresh;
+    setNetworkBusy(true);
+    setError("");
+    try {
+      await recoverySession(fresh);
+      lastSavedSession.current = fresh;
+      restoreSession(fresh);
+      setRecoveryEnabled(true);
+      setConnecting(false);
+      setCreating(false);
+      setRepoInput("");
+      setBranchInput("");
+      setTokenInput("");
+      setConnector(null);
+      approvedTools.current.clear();
+      setReview(null);
+      setPendingReview(null);
+      setReviewStatus("");
+      setPanel("memory");
+      setPanelOpen(!mobile);
+      setMobilePane("files");
+      setNotice("Local workspace deleted. Start fresh with New file or open a repository.");
+    } catch (failure) {
+      latestSession.current = previous;
+      setError(`Could not delete the workspace from local recovery: ${failureMessage(failure, "Unknown storage error.")} Nothing was cleared.`);
+    } finally {
+      setNetworkBusy(false);
+    }
   }
 
   async function loadModel() {
@@ -1633,6 +1680,15 @@ function App() {
         <div className="section-heading">
           <h2>EXPLORER</h2>
           <div className="heading-actions">
+            <button
+              className="icon-button"
+              title="Delete workspace and start fresh"
+              aria-label="Delete workspace and start fresh"
+              disabled={busy}
+              onClick={() => void deleteWorkspace()}
+            >
+              <Trash2 size={16} />
+            </button>
             <button
               className="icon-button"
               title="New file"

@@ -58,6 +58,8 @@ Choose **Download workspace ZIP** in Explorer (the **Files** tab on mobile) to s
 
 Choose **Import workspace ZIP** to reopen a downloaded project. Import replaces the workspace only after validation and confirmation, disconnects GitHub, and clears the previous conversation/notes. Only UTF-8 text files are supported; binary files, invalid paths, and file/folder collisions fail atomically. Limits: 3 MB compressed input, 1,000 files, 500 KB per file, and 2 MB expanded text. ZIP creation/import runs locally.
 
+Choose **Delete workspace and start fresh** (the trash icon in Explorer) to clear the current local files, conversation, notes, pinned requirements, goal, Spaces, pending proposal, and local recovery copy after confirmation. This does not delete a GitHub repository, Neon cloud saves, or saved skills. Download a ZIP first if you may need the files later.
+
 The browser controls where downloads are saved. Keep ZIP backups even with autosave.
 
 ### Preview and serve web apps
